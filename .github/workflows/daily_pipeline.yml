@@ -1,0 +1,45 @@
+name: Daily pipeline
+
+on:
+  schedule:
+    # 10:00 Berlin = 08:00 UTC winter / 09:00 UTC summer.
+    # Run at 08:00 UTC year-round; pipeline logic handles timezone offset.
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+jobs:
+  feature-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run feature pipeline
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        run: uv run python -m neghour.pipelines.feature_pipeline
+
+  inference-pipeline:
+    needs: feature-pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run inference pipeline
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: uv run python -m neghour.pipelines.inference_pipeline
