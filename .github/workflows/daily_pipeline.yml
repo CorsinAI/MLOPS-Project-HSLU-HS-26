@@ -1,10 +1,9 @@
 name: Daily pipeline
 
 on:
-  schedule:
-    # 10:00 Berlin = 08:00 UTC winter / 09:00 UTC summer.
-    # Run at 08:00 UTC year-round; pipeline logic handles timezone offset.
-    - cron: "0 8 * * *"
+  # DISABLED: uncomment schedule to re-enable
+  # schedule:
+  #   - cron: "0 8 * * *"
   workflow_dispatch:
 
 jobs:
