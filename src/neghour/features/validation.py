@@ -7,8 +7,6 @@ A leakage violation raises LeakageError and aborts the pipeline run.
 
 from __future__ import annotations
 
-import pandas as pd
-
 EXPECTED_COLUMNS: list[str] = [
     "delivery_date",
     "delivery_hour",

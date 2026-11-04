@@ -16,7 +16,6 @@ Hyperparameter tuning: Optuna (optional, post-MVP).
 
 from __future__ import annotations
 
-import pandas as pd
 
 # TODO: implement class NegHourLGBM:
 #     fit(X_train, y_train, X_val, y_val) -> self

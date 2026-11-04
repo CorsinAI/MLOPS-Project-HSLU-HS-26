@@ -13,9 +13,7 @@ feature pipeline can enforce the 10:00 cut-off without leakage.
 
 from __future__ import annotations
 
-from datetime import date
 
-import pandas as pd
 
 # TODO: implement fetch_prices(start: date, end: date) -> pd.DataFrame
 #       columns: delivery_date, delivery_hour, price_eur_mwh, available_at

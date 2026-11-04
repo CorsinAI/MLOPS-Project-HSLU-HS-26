@@ -15,7 +15,6 @@ Success criterion (proposal §1):
 
 from __future__ import annotations
 
-import pandas as pd
 
 # TODO: define BaselineModel protocol with fit(df: pd.DataFrame) and
 #       predict(df: pd.DataFrame) -> pd.Series methods
