@@ -30,8 +30,10 @@ from neghour.features.build import NEGATIVE_WINDOW_DAYS, build_features, build_l
 from neghour.features.validation import (
     FEATURE_COLUMNS,
     LABEL_COLUMNS,
+    validate_day_lengths,
     validate_no_leakage,
     validate_schema,
+    validate_unique_hours,
 )
 from neghour.sources import open_meteo, smard
 from neghour.sources.http import SourceUnavailableError
@@ -118,6 +120,9 @@ def run(
 
     validate_schema(features, FEATURE_COLUMNS)
     validate_schema(labels, LABEL_COLUMNS)
+    validate_unique_hours(features)
+    validate_unique_hours(labels)
+    validate_day_lengths(features)
     validate_no_leakage(features)
 
     if failed:
