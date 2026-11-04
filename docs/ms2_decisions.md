@@ -23,3 +23,5 @@ changed and why, so `docs/ms2_summary.pdf` can point here.
 | 16 | 2026-11-04 | `is_holiday` is 1 only when all 16 states are off; `holiday_share` carries regional holidays. | Keeps the binary flag meaningful next to the share (B2). |
 | 17 | 2026-11-04 | Feature group stays at version 1; no version bump. | Nothing was written before the schema was final, so the bump in the plan is unnecessary. |
 | 18 | 2026-11-04 | A leakage test failed to catch a removed weather filter, so late-publishing sources now have their own tests. | Found by deliberately breaking the code. All filters are now shown to be covered. |
+| 19 | 2026-11-04 | `HOPSWORKS_HOST` is required config: a GitHub Variable and `.env`, with no default. | The project is on a custom instance. Without a host the client silently falls back to the public SaaS host, so a missing value now fails with a clear message. |
+| 20 | 2026-11-04 | Feature groups use `stream=False`, Delta, offline only, statistics off. | The owner is on pay-as-you-go. This write path starts no Spark job; default statistics would start one after every insert. `wait_for_job` was removed because nothing is waited for. |
