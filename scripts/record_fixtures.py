@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
+import httpx
 import pandas as pd
 
 from neghour.config import SMARD_BASE_URL, SMARD_PRICE_FILTER, SMARD_REGION
+from neghour.sources import open_meteo
 from neghour.sources.http import get_json, new_client
 
 FIXTURES = Path("tests/fixtures/smard")
+WEATHER_FIXTURES = Path("tests/fixtures/open_meteo")
 WEEKS = {
     "15-minute switch": "2025-10-01",
     "spring DST": "2026-03-29",
@@ -38,6 +42,23 @@ def record_smard(filter_id: int) -> None:
     (FIXTURES / index_name).write_text(index_body, encoding="utf-8")
 
 
+def record_open_meteo() -> None:
+    """Save the raw bodies that fetch_weather requests for two test days."""
+
+    class Recorder(httpx.Client):
+        def get(self, url: str, **kwargs: object) -> httpx.Response:
+            response = super().get(url, **kwargs)
+            start = dict(kwargs["params"])["start_date"]
+            path = WEATHER_FIXTURES / f"previous_runs_{start}.json"
+            path.write_text(response.text, encoding="utf-8")
+            return response
+
+    for day in (date(2024, 1, 10), date(2026, 10, 25)):
+        open_meteo.fetch_weather(day, day, client=Recorder(timeout=60))
+
+
 if __name__ == "__main__":
     FIXTURES.mkdir(parents=True, exist_ok=True)
+    WEATHER_FIXTURES.mkdir(parents=True, exist_ok=True)
     record_smard(SMARD_PRICE_FILTER)
+    record_open_meteo()
