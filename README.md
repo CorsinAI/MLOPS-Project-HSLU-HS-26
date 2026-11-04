@@ -227,7 +227,8 @@ is not a secret and is not hardcoded, so the code runs against any instance.
 
 **Hopsworks cost:** the feature groups are offline only, with `stream=False`, Delta
 and statistics off, so the client writes the tables directly and inserts start no
-Spark job. Reads go through the Feature Query Service.
+Spark job. Reads go through the Feature Query Service. Creating the groups also
+created two `compute_stats` job definitions; neither has run.
 
 ## Repository
 
