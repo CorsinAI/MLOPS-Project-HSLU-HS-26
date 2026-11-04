@@ -9,3 +9,5 @@ changed and why, so `docs/ms2_summary.pdf` can point here.
 | 2 | 2026-11-04 | Review PDFs are not in the repo; the owner deleted them locally. | Anonymous reviews must not land in a public repo. |
 | 3 | 2026-11-04 | No Hugging Face Parquet fallback. Hopsworks is the only planned store. | Owner decision. The storage interface stays, so a backend can still be swapped. |
 | 4 | 2026-11-04 | Labels table gets `n_neg_quarters` (NaN before the 15-minute switch). | Lets the "any quarter < 0" label be tested later without rebuilding (E1). |
+| 5 | 2026-11-04 | Direct dependencies are pinned with `==` as well as locked in `uv.lock`; `train` and `app` extras hold packages MS2 does not need. | Reproducible builds and a smaller image. DagsHub code is untouched. |
+| 6 | 2026-11-04 | The Hopsworks check runs as a manual GitHub workflow, not locally, and also tests upsert behaviour. | Needs only the GitHub secret, and proves the behaviour the labels/features split relies on. |
