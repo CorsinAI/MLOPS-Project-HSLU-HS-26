@@ -6,7 +6,11 @@ A leakage violation raises LeakageError and aborts the run.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
+
+from neghour.timeutils import delivery_hours
 
 FEATURE_COLUMNS: list[str] = [
     "delivery_utc",
@@ -77,6 +81,21 @@ def validate_schema(frame: pd.DataFrame, expected: list[str]) -> None:
     extra = sorted(set(frame.columns) - set(expected))
     if missing or extra:
         raise ValueError(f"Schema mismatch. Missing: {missing}. Extra: {extra}.")
+
+
+def validate_unique_hours(frame: pd.DataFrame) -> None:
+    """Raise ValueError if any delivery hour appears twice."""
+    duplicates = frame["delivery_utc"].duplicated().sum()
+    if duplicates:
+        raise ValueError(f"Duplicate delivery hours: {duplicates}.")
+
+
+def validate_day_lengths(features: pd.DataFrame) -> None:
+    """Raise ValueError unless each delivery day has all of its 23-25 hours."""
+    for day, rows in features.groupby("delivery_day").size().items():
+        expected = len(delivery_hours(date.fromisoformat(str(day))))
+        if rows != expected:
+            raise ValueError(f"{day} has {rows} rows, expected {expected}.")
 
 
 def validate_no_leakage(features: pd.DataFrame) -> None:

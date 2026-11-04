@@ -34,3 +34,8 @@ jobs:
           args=(--first-day "$FIRST_DAY")
           if [ -n "$LAST_DAY" ]; then args+=(--last-day "$LAST_DAY"); fi
           uv run --frozen python -m neghour.pipelines.backfill "${args[@]}"
+
+      - name: Report on stored data
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: uv run --frozen python scripts/check_store_quality.py
