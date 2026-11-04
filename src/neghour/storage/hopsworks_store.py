@@ -9,18 +9,28 @@ the event time.
 Groups are offline only. With `stream=False` and Delta, the client writes the
 table directly, so an insert starts no Spark job. Statistics are off because
 they would start one after every insert. See GROUP_SETTINGS.
+
+Writes retry on server errors. An upsert is idempotent, so repeating one after
+a failed metadata commit is safe. Client errors fail at once.
 """
 
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 import hopsworks
 import pandas as pd
+from hopsworks_common.client.exceptions import RestAPIError
 
 from neghour import config
 
+logger = logging.getLogger(__name__)
+
 KEY_COLUMN = "delivery_epoch"
+WRITE_ATTEMPTS = 3
+WRITE_RETRY_DELAY_S = 30.0
 EPOCH = pd.Timestamp(0, tz="UTC")
 GROUP_SETTINGS: dict[str, Any] = {
     "online_enabled": False,
@@ -46,6 +56,20 @@ def _with_key(rows: pd.DataFrame) -> pd.DataFrame:
     keyed = rows.copy()
     keyed[KEY_COLUMN] = (keyed["delivery_utc"] - EPOCH) // pd.Timedelta(seconds=1)
     return keyed
+
+
+def _insert(group: Any, rows: pd.DataFrame) -> None:
+    """Insert rows, retrying when the server fails."""
+    for attempt in range(1, WRITE_ATTEMPTS + 1):
+        try:
+            group.insert(rows)
+            return
+        except RestAPIError as error:
+            status = error.response.status_code
+            if status < 500 or attempt == WRITE_ATTEMPTS:
+                raise
+            logger.warning("Hopsworks write failed: HTTP %s, retrying", status)
+            time.sleep(WRITE_RETRY_DELAY_S)
 
 
 class HopsworksStore:
@@ -79,12 +103,10 @@ class HopsworksStore:
         )
 
     def upsert_features(self, features: pd.DataFrame) -> None:
-        group = self._features_group()
-        group.insert(_with_key(features))
+        _insert(self._features_group(), _with_key(features))
 
     def upsert_labels(self, labels: pd.DataFrame) -> None:
-        group = self._labels_group()
-        group.insert(_with_key(labels))
+        _insert(self._labels_group(), _with_key(labels))
 
     def read_features(self) -> pd.DataFrame:
         return self._features_group().read().drop(columns=KEY_COLUMN)
