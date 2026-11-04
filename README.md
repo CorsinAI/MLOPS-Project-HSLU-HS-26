@@ -136,6 +136,7 @@ serving, which is training-serving skew.
   data that looks real.
 - During an outage the daily run writes only the newest delivery day, so good rows
   are not overwritten. The next run repairs that day.
+- Hopsworks writes retry on server errors, because upserts are safe to repeat.
 - The run fails if validation or storage fails, or if SMARD and Open-Meteo are both
   down. A backfill fails instead of storing gaps.
 
