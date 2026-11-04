@@ -74,3 +74,8 @@ h2:last-of-type {
 td:first-child {
   white-space: nowrap;
 }
+
+h3 {
+  font-size: 9.2pt;
+  margin: 1.8mm 0 0.8mm;
+}
