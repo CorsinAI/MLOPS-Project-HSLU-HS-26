@@ -93,6 +93,30 @@ def test_rows_do_not_change_when_later_data_is_poisoned(day: date) -> None:
     pd.testing.assert_frame_equal(full, poisoned)
 
 
+@pytest.mark.parametrize("day", DAYS)
+@pytest.mark.parametrize(
+    ("position", "column"),
+    [
+        (0, "available_at"),
+        (1, "available_at_weather"),
+        (2, "available_at_actuals"),
+    ],
+)
+def test_a_source_that_publishes_late_counts_as_missing(
+    day: date, position: int, column: str
+) -> None:
+    """The rule-based frames are always on time, so force each source to be late."""
+    frames = list(raw_frames(day))
+    frames[position][column] += pd.Timedelta(days=30)
+    late = build_features(*frames, day, day)
+
+    frames[position] = frames[position].head(0)
+    absent = build_features(*frames, day, day)
+
+    pd.testing.assert_frame_equal(late, absent)
+    validate_no_leakage(late)
+
+
 def test_the_label_of_the_delivery_day_cannot_reach_the_row() -> None:
     day = date(2026, 7, 15)
     prices, weather, actuals = raw_frames(day)
