@@ -1,37 +1,36 @@
 """
-Schema and leakage validation for assembled feature DataFrames.
+Schema and leakage validation. Runs before anything is written to storage.
 
-All checks run before data is written to the Hopsworks feature group.
-A leakage violation raises LeakageError and aborts the pipeline run.
+A leakage violation raises LeakageError and aborts the run.
 """
 
 from __future__ import annotations
 
-EXPECTED_COLUMNS: list[str] = [
-    "delivery_date",
-    "delivery_hour",
+import pandas as pd
+
+FEATURE_COLUMNS: list[str] = [
+    "delivery_utc",
+    "delivery_day",
+    "cutoff_utc",
     "available_at",
-    # weather
-    "irradiance",
-    "cloud_cover",
-    "wind_100m",
-    "temperature",
-    "residual_load_proxy",
-    # market
+    # price features
     "price_h_d1",
     "price_h_d7",
     "neg_hours_last_7d",
-    "load_d2",
-    # lags
-    "solar_d2",
-    "wind_d2",
-    # calendar
-    "hour_of_day",
-    "weekday",
-    "is_holiday",
-    "month",
-    # label (None / NaN during inference; populated after D-1 12:45)
+    "available_at_price",
+    "missing_price",
+]
+
+LABEL_COLUMNS: list[str] = [
+    "delivery_utc",
+    "price_eur_mwh",
     "y_neg",
+    "available_at",
+]
+
+AVAILABILITY_COLUMNS: list[str] = [
+    "available_at",
+    "available_at_price",
 ]
 
 
@@ -39,9 +38,20 @@ class LeakageError(ValueError):
     """Raised when a feature row contains data published after the cut-off."""
 
 
-# TODO: implement validate_schema(df: pd.DataFrame) -> None
-#       raise ValueError listing missing / extra columns
-# TODO: implement validate_no_leakage(df: pd.DataFrame, cutoff_hour: int = 10) -> None
-#       raise LeakageError if any available_at >= D-1 cutoff_hour:00 Berlin
-# TODO: implement validate_label_not_in_features(df: pd.DataFrame) -> None
-#       ensure y_neg is absent or all-NaN in the feature columns passed to the model
+def validate_schema(frame: pd.DataFrame, expected: list[str]) -> None:
+    """Raise ValueError if the frame's columns differ from the expected ones."""
+    missing = sorted(set(expected) - set(frame.columns))
+    extra = sorted(set(frame.columns) - set(expected))
+    if missing or extra:
+        raise ValueError(f"Schema mismatch. Missing: {missing}. Extra: {extra}.")
+
+
+def validate_no_leakage(features: pd.DataFrame) -> None:
+    """Raise LeakageError if any availability timestamp is after the cut-off."""
+    for column in AVAILABILITY_COLUMNS:
+        late = features[features[column] > features["cutoff_utc"]]
+        if not late.empty:
+            first = late["delivery_utc"].min()
+            raise LeakageError(
+                f"{len(late)} rows have {column} after the cut-off, first at {first}."
+            )

@@ -1,37 +1,97 @@
 """
-Feature row assembly for the DE-LU negative-price prediction task.
+Feature and label assembly for the DE-LU negative-price task.
 
-Each feature row corresponds to one delivery hour h on day D.
-ALL values must have been published before 10:00 on D-1 (the cut-off);
-this is enforced via the `available_at` column before any row is returned.
+Every function here is pure: raw frames in, feature frames out. Live runs and
+backfills use the same code, so they cannot drift apart.
 
-Named features (proposal §3 — known by 10:00 on D-1):
-  Weather  (Open-Meteo forecast issued ~D-2):
-    irradiance, cloud_cover, wind_100m, temperature, residual_load_proxy
-  Market   (SMARD, published by D-2 12:45 at the latest):
-    price_h_d1, price_h_d7, neg_hours_last_7d, load_d2
-  Lags     (SMARD actuals, published D-2):
-    solar_d2, wind_d2
-  Calendar:
-    hour_of_day, weekday, is_holiday, month
+Selection is by timestamp, never by when a job runs. Each delivery day D only
+sees rows with available_at <= 10:00 Berlin on D-1, so a late run builds the
+same row as an on-time run.
 
-Label (never used as a feature):
-  y_neg = 1 if DE-LU day-ahead price for hour h on D < 0
-  Published at D-1 12:45 — well after the cut-off.
-
-Out-of-time split:
-  train 2024 · validate H1 2025 · test Jul 2025–Jun 2026 · live from ~Nov 2026
+Label (never a feature):
+  y_neg = 1 if the hourly mean DE-LU day-ahead price of the hour is < 0.
 """
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
+import pandas as pd
+
+from neghour.timeutils import (
+    cutoff_utc,
+    delivery_days,
+    delivery_hours,
+    same_hour_earlier,
+)
+
+NEGATIVE_WINDOW_DAYS = 7
 
 
-# TODO: implement build_row(delivery_date: date, delivery_hour: int) -> pd.Series
-#       fetches all required source data and assembles one feature row
-# TODO: implement build_day(delivery_date: date) -> pd.DataFrame
-#       calls build_row for hours 0–23, returns 24-row DataFrame
-# TODO: implement build_history(start: date, end: date) -> pd.DataFrame
-#       loops over dates and concatenates; used for backfill
-# TODO: enforce cut-off in all functions:
-#       assert all(df["available_at"] < cutoff_dt), LeakageError
+def build_labels(prices: pd.DataFrame) -> pd.DataFrame:
+    """Return one label row per hour that has a published price."""
+    labels = prices[["delivery_utc", "price_eur_mwh", "available_at"]].copy()
+    labels["y_neg"] = (labels["price_eur_mwh"] < 0).astype("int64")
+    return labels.sort_values("delivery_utc").reset_index(drop=True)
+
+
+def _day_price_features(prices: pd.DataFrame, day: date) -> pd.DataFrame:
+    cutoff = cutoff_utc(day)
+    visible = prices[prices["available_at"] <= cutoff]
+    price = visible.set_index("delivery_utc")["price_eur_mwh"]
+    available = visible.set_index("delivery_utc")["available_at"]
+
+    hours = delivery_hours(day)
+    lag_1 = same_hour_earlier(hours, 1)
+    lag_7 = same_hour_earlier(hours, 7)
+
+    window = delivery_hours(
+        day - timedelta(days=NEGATIVE_WINDOW_DAYS), day - timedelta(days=1)
+    )
+    window_prices = price.reindex(window)
+    complete = window_prices.notna().all()
+    negative_hours = float((window_prices < 0).sum()) if complete else float("nan")
+
+    frame = pd.DataFrame(
+        {
+            "delivery_utc": hours,
+            "delivery_day": day.isoformat(),
+            "cutoff_utc": cutoff,
+            "price_h_d1": price.reindex(lag_1).to_numpy(),
+            "price_h_d7": price.reindex(lag_7).to_numpy(),
+            "neg_hours_last_7d": negative_hours,
+        }
+    )
+    frame["available_at_price"] = pd.concat(
+        [
+            available.reindex(lag_1).reset_index(drop=True),
+            available.reindex(lag_7).reset_index(drop=True),
+            pd.Series(available.reindex(window).max()).repeat(len(hours)).reset_index(
+                drop=True
+            ),
+        ],
+        axis=1,
+    ).max(axis=1)
+    frame["missing_price"] = (
+        frame[["price_h_d1", "price_h_d7", "neg_hours_last_7d"]].isna().any(axis=1)
+    )
+    return frame
+
+
+def build_price_features(
+    prices: pd.DataFrame, first_day: date, last_day: date
+) -> pd.DataFrame:
+    """Return price features for every hour of the given delivery days."""
+    frames = [
+        _day_price_features(prices, day) for day in delivery_days(first_day, last_day)
+    ]
+    return pd.concat(frames, ignore_index=True)
+
+
+def build_features(
+    prices: pd.DataFrame, first_day: date, last_day: date
+) -> pd.DataFrame:
+    """Return the full feature frame for the given delivery days."""
+    features = build_price_features(prices, first_day, last_day)
+    features["available_at"] = features["available_at_price"]
+    return features
