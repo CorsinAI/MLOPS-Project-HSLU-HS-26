@@ -20,6 +20,7 @@ CUTOFF_HOUR: int = int(os.getenv("CUTOFF_HOUR", "10"))  # 10:00 Berlin on D-1
 # SMARD (Bundesnetzagentur)
 SMARD_BASE_URL = "https://www.smard.de/app/chart_data"
 SMARD_PRICE_FILTER = 4169  # DE-LU day-ahead price
+SMARD_REGION = "DE-LU"
 
 # Open-Meteo
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -28,12 +29,17 @@ OPEN_METEO_HISTORY_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
 # Energy-Charts (fallback)
 ENERGY_CHARTS_BASE_URL = "https://api.energy-charts.info"
 
+# Storage
+STORAGE_BACKEND: str = os.getenv("STORAGE_BACKEND", "hopsworks")
+
 # Hopsworks
 HOPSWORKS_PROJECT: str = os.getenv("HOPSWORKS_PROJECT", "neghour")
 HOPSWORKS_API_KEY: str = os.getenv("HOPSWORKS_API_KEY", "")
 
 FEATURE_GROUP_NAME = "neghour_features"
 FEATURE_GROUP_VERSION = 1
+LABEL_GROUP_NAME = "neghour_labels"
+LABEL_GROUP_VERSION = 1
 PREDICTION_GROUP_NAME = "neghour_predictions"
 PREDICTION_GROUP_VERSION = 1
 
