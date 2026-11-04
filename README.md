@@ -208,16 +208,22 @@ Refresh them with `uv run --frozen python scripts/record_fixtures.py`.
 
 | Workflow | Trigger | Steps |
 |---|---|---|
-| `daily_pipeline.yml` | Cron 01:17 and 05:17 UTC, or manual | Feature pipeline |
+| `daily_pipeline.yml` | Cron 01:17, 05:17 and 12:17 UTC, or manual | Feature pipeline |
 | `backfill.yml` | Manual | Backfill, then a report on stored data |
 | `ci.yml` | Push to main, PR, or manual | Lock check, ruff, pytest, Docker build |
 | `check_hopsworks.yml` | Manual | Hopsworks round-trip check |
 | `weekly_training.yml` | Manual | Not implemented until MS3 |
 
 GitHub cron is in UTC and has started this repo's jobs 4 to 9 hours late, so the
-daily run has two slots: 02:17 and 06:17 CET, or 03:17 and 07:17 CEST. Because rows
-are selected by timestamp, late runs stay correct, and the second run repairs
-anything the first one missed.
+daily run has two morning slots: 02:17 and 06:17 CET, or 03:17 and 07:17 CEST.
+Because rows are selected by timestamp, late runs stay correct, and the second
+run repairs anything the first one missed.
+
+A third slot at 12:17 UTC (13:17 CET, 14:17 CEST) refreshes labels. The auction
+closes at 12:00, so the morning runs cannot see the next day's prices. This run
+stores those labels the same day, not the next morning, and it gives one more
+scheduled chance each day. It starts after the cut-off on purpose: features are
+still selected by `available_at`, so it adds no later data to them.
 
 **Secret:** `HOPSWORKS_API_KEY` in GitHub Secrets. Locally it goes in `.env`, which
 is gitignored.
@@ -227,7 +233,8 @@ is not a secret and is not hardcoded, so the code runs against any instance.
 
 **Hopsworks cost:** the feature groups are offline only, with `stream=False`, Delta
 and statistics off, so the client writes the tables directly and inserts start no
-Spark job. Reads go through the Feature Query Service.
+Spark job. Reads go through the Feature Query Service. Creating the groups also
+created two `compute_stats` job definitions; neither has run.
 
 ## Repository
 
