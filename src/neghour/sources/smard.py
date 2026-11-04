@@ -18,12 +18,21 @@ from datetime import date
 import httpx
 import pandas as pd
 
-from neghour.availability import price_available_at
-from neghour.config import SMARD_BASE_URL, SMARD_PRICE_FILTER, SMARD_REGION
+from neghour.availability import actuals_available_at, price_available_at
+from neghour.config import (
+    SMARD_BASE_URL,
+    SMARD_LOAD_FILTER,
+    SMARD_PRICE_FILTER,
+    SMARD_REGION,
+    SMARD_SOLAR_FILTER,
+    SMARD_WIND_OFFSHORE_FILTER,
+    SMARD_WIND_ONSHORE_FILTER,
+)
 from neghour.sources.http import get_json, new_client
 from neghour.timeutils import delivery_hours
 
 CHUNK_DAYS = 7
+QUARTER_SWITCH_DAY = date(2025, 10, 1)
 
 
 def _chunk_starts(
@@ -80,3 +89,85 @@ def fetch_prices(
         }
     )
 
+
+
+def fetch_negative_quarters(
+    first_day: date, last_day: date, client: httpx.Client | None = None
+) -> pd.Series:
+    """Return how many quarter hours of each hour were negative.
+
+    Only hours from the 15-minute switch on have four separate quarter prices.
+    """
+    start = max(first_day, QUARTER_SWITCH_DAY)
+    if start > last_day:
+        return empty_negative_quarters()
+    quarters = fetch_series(
+        SMARD_PRICE_FILTER, start, last_day, resolution="quarterhour", client=client
+    )
+    hour = quarters.index.floor("h")
+    counts = (quarters < 0).groupby(hour).sum()
+    complete = quarters.groupby(hour).size() == 4
+    return counts[complete].astype("float64").rename("n_neg_quarters")
+
+
+def fetch_actuals(
+    first_day: date, last_day: date, client: httpx.Client | None = None
+) -> pd.DataFrame:
+    """Return hourly load, solar and wind with their rule-based available_at."""
+    http = client if client is not None else new_client()
+
+    def series(filter_id: int) -> pd.Series:
+        return fetch_series(filter_id, first_day, last_day, client=http)
+
+    raw = pd.DataFrame(
+        {
+            "load_mwh": series(SMARD_LOAD_FILTER),
+            "solar_mwh": series(SMARD_SOLAR_FILTER),
+            "onshore": series(SMARD_WIND_ONSHORE_FILTER),
+            "offshore": series(SMARD_WIND_OFFSHORE_FILTER),
+        }
+    )
+    raw["wind_mwh"] = raw["onshore"] + raw["offshore"]
+    index = pd.DatetimeIndex(raw.index)
+    return pd.DataFrame(
+        {
+            "delivery_utc": index,
+            "load_mwh": raw["load_mwh"].to_numpy(),
+            "solar_mwh": raw["solar_mwh"].to_numpy(),
+            "wind_mwh": raw["wind_mwh"].to_numpy(),
+            "available_at_actuals": actuals_available_at(index),
+        }
+    )
+
+
+def _no_times() -> pd.DatetimeIndex:
+    return pd.DatetimeIndex([], tz="UTC")
+
+
+def empty_prices() -> pd.DataFrame:
+    """Return a price frame with no rows, used when SMARD is unavailable."""
+    return pd.DataFrame(
+        {
+            "delivery_utc": _no_times(),
+            "price_eur_mwh": pd.Series(dtype="float64"),
+            "available_at": _no_times(),
+        }
+    )
+
+
+def empty_actuals() -> pd.DataFrame:
+    """Return an actuals frame with no rows, used when SMARD is unavailable."""
+    return pd.DataFrame(
+        {
+            "delivery_utc": _no_times(),
+            "load_mwh": pd.Series(dtype="float64"),
+            "solar_mwh": pd.Series(dtype="float64"),
+            "wind_mwh": pd.Series(dtype="float64"),
+            "available_at_actuals": _no_times(),
+        }
+    )
+
+
+def empty_negative_quarters() -> pd.Series:
+    """Return an empty quarter count series."""
+    return pd.Series(dtype="float64", index=_no_times(), name="n_neg_quarters")

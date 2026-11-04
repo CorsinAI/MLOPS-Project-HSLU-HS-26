@@ -9,7 +9,15 @@ from pathlib import Path
 import httpx
 import pandas as pd
 
-from neghour.config import SMARD_BASE_URL, SMARD_PRICE_FILTER, SMARD_REGION
+from neghour.config import (
+    SMARD_BASE_URL,
+    SMARD_LOAD_FILTER,
+    SMARD_PRICE_FILTER,
+    SMARD_REGION,
+    SMARD_SOLAR_FILTER,
+    SMARD_WIND_OFFSHORE_FILTER,
+    SMARD_WIND_ONSHORE_FILTER,
+)
 from neghour.sources import open_meteo
 from neghour.sources.http import get_json, new_client
 
@@ -22,22 +30,21 @@ WEEKS = {
 }
 
 
-def record_smard(filter_id: int) -> None:
+def record_smard(filter_id: int, resolution: str = "hour") -> None:
     client = new_client()
     base = f"{SMARD_BASE_URL}/{filter_id}/{SMARD_REGION}"
-    starts = get_json(client, f"{base}/index_hour.json")["timestamps"]
+    starts = get_json(client, f"{base}/index_{resolution}.json")["timestamps"]
 
     kept: list[int] = []
-    for name, day in WEEKS.items():
+    for day in WEEKS.values():
         moment = pd.Timestamp(day, tz="UTC").value // 1_000_000
         chunk = max(start for start in starts if start <= moment)
         kept.append(chunk)
-        body = get_json(client, f"{base}/{filter_id}_{SMARD_REGION}_hour_{chunk}.json")
-        name_on_disk = f"{filter_id}_{SMARD_REGION}_hour_{chunk}.json"
-        (FIXTURES / name_on_disk).write_text(json.dumps(body), encoding="utf-8")
-        print(f"recorded {name}: {name_on_disk}")
+        name = f"{filter_id}_{SMARD_REGION}_{resolution}_{chunk}.json"
+        body = get_json(client, f"{base}/{name}")
+        (FIXTURES / name).write_text(json.dumps(body), encoding="utf-8")
 
-    index_name = f"{filter_id}_{SMARD_REGION}_index_hour.json"
+    index_name = f"{filter_id}_{SMARD_REGION}_index_{resolution}.json"
     index_body = json.dumps({"timestamps": kept})
     (FIXTURES / index_name).write_text(index_body, encoding="utf-8")
 
@@ -61,4 +68,9 @@ if __name__ == "__main__":
     FIXTURES.mkdir(parents=True, exist_ok=True)
     WEATHER_FIXTURES.mkdir(parents=True, exist_ok=True)
     record_smard(SMARD_PRICE_FILTER)
+    record_smard(SMARD_PRICE_FILTER, "quarterhour")
+    record_smard(SMARD_LOAD_FILTER)
+    record_smard(SMARD_SOLAR_FILTER)
+    record_smard(SMARD_WIND_ONSHORE_FILTER)
+    record_smard(SMARD_WIND_OFFSHORE_FILTER)
     record_open_meteo()

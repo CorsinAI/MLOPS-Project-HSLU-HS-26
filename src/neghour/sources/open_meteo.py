@@ -86,3 +86,12 @@ def fetch_weather(
     has_values = weather[WEATHER_COLUMNS].notna().any(axis=1)
     weather["available_at_weather"] = weather["available_at_weather"].where(has_values)
     return weather.reset_index(names="delivery_utc")
+
+
+def empty_weather() -> pd.DataFrame:
+    """Return a weather frame with no rows, used when Open-Meteo is unavailable."""
+    no_times = pd.DatetimeIndex([], tz="UTC")
+    columns = {name: pd.Series(dtype="float64") for name in WEATHER_COLUMNS}
+    return pd.DataFrame(
+        {"delivery_utc": no_times, **columns, "available_at_weather": no_times}
+    )
