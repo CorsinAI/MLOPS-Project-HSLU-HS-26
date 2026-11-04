@@ -2,13 +2,16 @@ name: Daily pipeline
 
 on:
   schedule:
-    # GitHub cron is UTC and has started this repo's jobs 4-9 hours late, so
-    # there are two slots. Rows are selected by timestamp, so a late run writes
-    # the same features, and the second run repairs anything the first missed.
+    # GitHub cron is UTC and has started this repo's jobs 4-9 hours late. Rows
+    # are selected by timestamp, so a late run writes the same features.
+    # Two morning slots, so the second repairs anything the first missed:
     #   01:17 UTC = 02:17 CET / 03:17 CEST
     #   05:17 UTC = 06:17 CET / 07:17 CEST
+    # One slot after day-ahead publication, for the labels of the next day:
+    #   12:17 UTC = 13:17 CET / 14:17 CEST
     - cron: "17 1 * * *"
     - cron: "17 5 * * *"
+    - cron: "17 12 * * *"
   workflow_dispatch:
 
 jobs:
