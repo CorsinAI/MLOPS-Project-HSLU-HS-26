@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
 import pytest
+from hopsworks_common.client.exceptions import RestAPIError
 
 from neghour import config
 from neghour.storage import hopsworks_store
@@ -80,3 +82,56 @@ def test_groups_are_created_with_the_settings_that_start_no_job(
     assert created["stream"] is False
     assert created["statistics_config"] is False
     assert created["online_enabled"] is False
+
+
+class FakeResponse:
+    reason = "Server said no"
+    content = b"{}"
+
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+
+    def json(self) -> dict[str, Any]:
+        return {}
+
+
+class FlakyGroup:
+    """Fails with each given HTTP status in turn, then succeeds."""
+
+    def __init__(self, *statuses: int) -> None:
+        self.statuses = list(statuses)
+        self.inserts = 0
+
+    def insert(self, rows: Any) -> None:
+        self.inserts += 1
+        if self.statuses:
+            response = FakeResponse(self.statuses.pop(0))
+            raise RestAPIError("https://example.test", response)
+
+
+@pytest.fixture
+def no_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(hopsworks_store, "WRITE_RETRY_DELAY_S", 0)
+
+
+@pytest.mark.usefixtures("no_delay")
+def test_a_server_error_is_retried() -> None:
+    group = FlakyGroup(500, 503)
+    hopsworks_store._insert(group, pd.DataFrame())
+    assert group.inserts == 3
+
+
+@pytest.mark.usefixtures("no_delay")
+def test_a_lasting_server_error_fails_the_run() -> None:
+    group = FlakyGroup(500, 500, 500, 500)
+    with pytest.raises(RestAPIError):
+        hopsworks_store._insert(group, pd.DataFrame())
+    assert group.inserts == hopsworks_store.WRITE_ATTEMPTS
+
+
+@pytest.mark.usefixtures("no_delay")
+def test_a_client_error_is_not_retried() -> None:
+    group = FlakyGroup(403)
+    with pytest.raises(RestAPIError):
+        hopsworks_store._insert(group, pd.DataFrame())
+    assert group.inserts == 1
