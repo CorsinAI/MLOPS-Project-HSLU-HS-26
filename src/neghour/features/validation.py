@@ -26,12 +26,35 @@ FEATURE_COLUMNS: list[str] = [
     "temperature",
     "available_at_weather",
     "missing_weather",
+    # actuals
+    "load_d2",
+    "solar_d2",
+    "wind_d2",
+    "load_h_d7",
+    "available_at_actuals",
+    "missing_actuals",
+    "residual_load_proxy",
+    # calendar
+    "hour_of_day",
+    "weekday",
+    "month",
+    "is_weekend",
+    "hour_sin",
+    "hour_cos",
+    "weekday_sin",
+    "weekday_cos",
+    "year_sin",
+    "year_cos",
+    "holiday_share",
+    "is_holiday",
+    "available_at_calendar",
 ]
 
 LABEL_COLUMNS: list[str] = [
     "delivery_utc",
     "price_eur_mwh",
     "y_neg",
+    "n_neg_quarters",
     "available_at",
 ]
 
@@ -39,6 +62,8 @@ AVAILABILITY_COLUMNS: list[str] = [
     "available_at",
     "available_at_price",
     "available_at_weather",
+    "available_at_actuals",
+    "available_at_calendar",
 ]
 
 

@@ -5,47 +5,27 @@ from datetime import date, timedelta
 import pandas as pd
 import pytest
 
-from neghour.availability import price_available_at, weather_available_at
 from neghour.features.build import build_features as build_all
 from neghour.features.build import build_labels
 from neghour.features.validation import (
+    AVAILABILITY_COLUMNS,
     FEATURE_COLUMNS,
     LeakageError,
     validate_no_leakage,
     validate_schema,
 )
-from neghour.timeutils import delivery_hours
+from tests.frames import actuals_frame, price_frame, weather_frame
 
 DAY = date(2026, 1, 15)
 
 
-def weather_frame(first_day: date, last_day: date) -> pd.DataFrame:
-    hours = delivery_hours(first_day, last_day)
-    return pd.DataFrame(
-        {
-            "delivery_utc": hours,
-            "irradiance": 100.0,
-            "cloud_cover": 50.0,
-            "wind_100m": 8.0,
-            "temperature": 12.0,
-            "available_at_weather": weather_available_at(hours),
-        }
-    )
-
-
 def build_features(prices: pd.DataFrame, first: date, last: date) -> pd.DataFrame:
-    return build_all(prices, weather_frame(first, last), first, last)
+    actuals = actuals_frame(first - timedelta(days=7), last)
+    return build_all(prices, weather_frame(first, last), actuals, first, last)
 
 
-def price_frame(first_day: date, last_day: date, value: float = 50.0) -> pd.DataFrame:
-    hours = delivery_hours(first_day, last_day)
-    return pd.DataFrame(
-        {
-            "delivery_utc": hours,
-            "price_eur_mwh": value,
-            "available_at": price_available_at(hours),
-        }
-    )
+def no_quarters() -> pd.Series:
+    return pd.Series(dtype="float64", index=pd.DatetimeIndex([], tz="UTC"))
 
 
 def set_price(prices: pd.DataFrame, moment: pd.Timestamp, value: float) -> None:
@@ -55,7 +35,15 @@ def set_price(prices: pd.DataFrame, moment: pd.Timestamp, value: float) -> None:
 def test_label_is_strictly_below_zero() -> None:
     prices = price_frame(DAY, DAY).head(3)
     prices["price_eur_mwh"] = [-0.01, 0.0, 0.01]
-    assert build_labels(prices)["y_neg"].tolist() == [1, 0, 0]
+    assert build_labels(prices, no_quarters())["y_neg"].tolist() == [1, 0, 0]
+
+
+def test_labels_keep_quarter_counts_where_they_exist() -> None:
+    prices = price_frame(DAY, DAY).head(2)
+    first_hour = pd.DatetimeIndex(prices["delivery_utc"].iloc[:1])
+    labels = build_labels(prices, pd.Series([3.0], index=first_hour))
+    assert labels["n_neg_quarters"].iloc[0] == 3.0
+    assert pd.isna(labels["n_neg_quarters"].iloc[1])
 
 
 def test_price_lags_use_same_hour_on_d1_and_d7() -> None:
@@ -125,7 +113,8 @@ def test_weather_published_after_the_cutoff_is_dropped() -> None:
     prices = price_frame(DAY - timedelta(days=7), DAY)
     weather = weather_frame(DAY, DAY)
     weather["available_at_weather"] = pd.Timestamp("2026-01-14 09:00:01", tz="UTC")
-    features = build_all(prices, weather, DAY, DAY)
+    actuals = actuals_frame(DAY - timedelta(days=7), DAY)
+    features = build_all(prices, weather, actuals, DAY, DAY)
     assert features["wind_100m"].isna().all()
     assert features["missing_weather"].all()
     validate_no_leakage(features)
@@ -134,7 +123,47 @@ def test_weather_published_after_the_cutoff_is_dropped() -> None:
 def test_missing_weather_keeps_the_row_with_a_flag() -> None:
     prices = price_frame(DAY - timedelta(days=7), DAY)
     empty = weather_frame(DAY, DAY).head(0)
-    features = build_all(prices, empty, DAY, DAY)
+    actuals = actuals_frame(DAY - timedelta(days=7), DAY)
+    features = build_all(prices, empty, actuals, DAY, DAY)
     assert len(features) == 24
     assert features["missing_weather"].all()
     assert features["price_h_d1"].notna().all()
+
+
+def test_actuals_use_same_hour_on_d2_and_d7() -> None:
+    prices = price_frame(DAY - timedelta(days=7), DAY)
+    actuals = actuals_frame(DAY - timedelta(days=7), DAY)
+    noon = pd.Timestamp("2026-01-15 11:00", tz="UTC")
+    day_2 = actuals["delivery_utc"] == noon - pd.Timedelta(days=2)
+    day_7 = actuals["delivery_utc"] == noon - pd.Timedelta(days=7)
+    actuals.loc[day_2, ["load_mwh", "solar_mwh", "wind_mwh"]] = [1.0, 2.0, 3.0]
+    actuals.loc[day_7, "load_mwh"] = 7.0
+    weather = weather_frame(DAY, DAY)
+    features = build_all(prices, weather, actuals, DAY, DAY).set_index("delivery_utc")
+    row = features.loc[noon]
+    assert (row["load_d2"], row["solar_d2"], row["wind_d2"]) == (1.0, 2.0, 3.0)
+    assert row["load_h_d7"] == 7.0
+
+
+def test_actuals_published_after_the_cutoff_are_dropped() -> None:
+    prices = price_frame(DAY - timedelta(days=7), DAY)
+    actuals = actuals_frame(DAY - timedelta(days=7), DAY)
+    actuals["available_at_actuals"] = pd.Timestamp("2026-01-14 09:00:01", tz="UTC")
+    features = build_all(prices, weather_frame(DAY, DAY), actuals, DAY, DAY)
+    assert features["load_d2"].isna().all()
+    assert features["missing_actuals"].all()
+    assert features["residual_load_proxy"].isna().all()
+    validate_no_leakage(features)
+
+
+def test_residual_load_proxy_is_load_minus_expected_renewables() -> None:
+    prices = price_frame(DAY - timedelta(days=7), DAY)
+    features = build_features(prices, DAY, DAY)
+    expected = 60_000 - 73_000 * 0.5**3 - 100_000 * 0.5
+    assert features["residual_load_proxy"].iloc[0] == pytest.approx(expected)
+
+
+def test_every_availability_column_is_filled_for_a_complete_row() -> None:
+    prices = price_frame(DAY - timedelta(days=7), DAY)
+    features = build_features(prices, DAY, DAY)
+    assert features[AVAILABILITY_COLUMNS].notna().all().all()

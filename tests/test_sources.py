@@ -12,14 +12,14 @@ from neghour.sources import http, open_meteo, smard
 
 FIXTURES = Path(__file__).parent / "fixtures" / "smard"
 WEATHER_FIXTURES = Path(__file__).parent / "fixtures" / "open_meteo"
-PRICE_FILTER = 4169
 
 
 def fixture_client() -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
-        name = request.url.path.rsplit("/", 1)[-1]
+        parts = request.url.path.split("/")
+        name = parts[-1]
         if name.startswith("index_"):
-            name = f"{PRICE_FILTER}_DE-LU_{name}"
+            name = f"{parts[-3]}_DE-LU_{name}"
         path = FIXTURES / name
         if not path.exists():
             return httpx.Response(404)
@@ -115,3 +115,24 @@ def test_early_2024_weather_stays_nan_without_availability() -> None:
     assert len(weather) == 24
     assert weather[open_meteo.WEATHER_COLUMNS].isna().all().all()
     assert weather["available_at_weather"].isna().all()
+
+
+def test_actuals_add_onshore_and_offshore_wind() -> None:
+    day = date(2026, 10, 25)
+    actuals = smard.fetch_actuals(day, day, client=fixture_client())
+    assert len(actuals) == 25
+    assert actuals[["load_mwh", "solar_mwh", "wind_mwh"]].notna().all().all()
+    lag = actuals["available_at_actuals"] - actuals["delivery_utc"]
+    assert (lag == pd.Timedelta(hours=7)).all()
+
+
+def test_negative_quarters_are_counted_per_hour_after_the_switch() -> None:
+    day = date(2025, 10, 2)
+    counts = smard.fetch_negative_quarters(day, day, client=fixture_client())
+    assert len(counts) == 24
+    assert counts.between(0, 4).all()
+
+
+def test_negative_quarters_are_empty_before_the_switch() -> None:
+    day = date(2025, 9, 30)
+    assert smard.fetch_negative_quarters(day, day, client=fixture_client()).empty

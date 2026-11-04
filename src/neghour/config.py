@@ -21,6 +21,10 @@ CUTOFF_HOUR: int = int(os.getenv("CUTOFF_HOUR", "10"))  # 10:00 Berlin on D-1
 SMARD_BASE_URL = "https://www.smard.de/app/chart_data"
 SMARD_PRICE_FILTER = 4169  # DE-LU day-ahead price
 SMARD_REGION = "DE-LU"
+SMARD_SOLAR_FILTER = 4068
+SMARD_WIND_ONSHORE_FILTER = 4067
+SMARD_WIND_OFFSHORE_FILTER = 1225
+SMARD_LOAD_FILTER = 410
 
 # Open-Meteo
 OPEN_METEO_PREVIOUS_RUNS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
@@ -36,6 +40,35 @@ WEATHER_POINTS: dict[str, tuple[float, float]] = {
 WIND_POINTS = ("n_coast", "ne", "centre")
 SOLAR_POINTS = ("ne", "centre", "south")
 TEMPERATURE_POINTS = ("n_coast", "ne", "centre", "south")
+
+# Residual-load proxy: approximate installed capacity at the end of 2024, and
+# the wind speed at which a turbine reaches full output. Fixed on purpose:
+# nothing is fitted, so nothing can leak from later periods.
+WIND_CAPACITY_MW = 73_000
+SOLAR_CAPACITY_MW = 100_000
+WIND_RATED_SPEED_MS = 12.0
+FULL_SUN_W_M2 = 1000.0
+
+# Population by state, 2025, based on census 2022. Source: Statistische Aemter
+# des Bundes und der Laender, statistikportal.de, "Flaeche und Bevoelkerung".
+STATE_POPULATION: dict[str, int] = {
+    "BW": 11_238_761,
+    "BY": 13_245_503,
+    "BE": 3_700_577,
+    "BB": 2_551_889,
+    "HB": 706_915,
+    "HH": 1_869_473,
+    "HE": 6_278_594,
+    "MV": 1_573_685,
+    "NI": 8_000_826,
+    "NW": 17_986_214,
+    "RP": 4_123_022,
+    "SL": 1_007_342,
+    "SN": 4_026_599,
+    "ST": 2_120_252,
+    "SH": 2_958_519,
+    "TH": 2_078_946,
+}
 
 # Energy-Charts (fallback)
 ENERGY_CHARTS_BASE_URL = "https://api.energy-charts.info"
