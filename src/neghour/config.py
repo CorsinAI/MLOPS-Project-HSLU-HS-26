@@ -23,8 +23,19 @@ SMARD_PRICE_FILTER = 4169  # DE-LU day-ahead price
 SMARD_REGION = "DE-LU"
 
 # Open-Meteo
-OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-OPEN_METEO_HISTORY_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
+OPEN_METEO_PREVIOUS_RUNS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
+
+# Fixed grid points (latitude, longitude). Each variable averages the points
+# that matter for it. See README, "Spatial coverage".
+WEATHER_POINTS: dict[str, tuple[float, float]] = {
+    "n_coast": (54.4, 8.7),
+    "ne": (53.0, 13.0),
+    "centre": (51.2, 10.5),
+    "south": (48.6, 11.0),
+}
+WIND_POINTS = ("n_coast", "ne", "centre")
+SOLAR_POINTS = ("ne", "centre", "south")
+TEMPERATURE_POINTS = ("n_coast", "ne", "centre", "south")
 
 # Energy-Charts (fallback)
 ENERGY_CHARTS_BASE_URL = "https://api.energy-charts.info"
@@ -53,7 +64,3 @@ MODEL_NAME = "neghour_lgbm"
 # Success criteria (proposal §1)
 TARGET_PR_AUC = 0.75
 TARGET_F1_MARGIN = 0.10  # LightGBM F1 must exceed best baseline by at least this
-
-# TODO: add Grid coordinates for Open-Meteo (centre of DE grid)
-DE_GRID_LAT = 51.2
-DE_GRID_LON = 10.5

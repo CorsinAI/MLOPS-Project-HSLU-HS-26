@@ -24,7 +24,7 @@ from neghour.features.validation import (
     validate_no_leakage,
     validate_schema,
 )
-from neghour.sources import smard
+from neghour.sources import open_meteo, smard
 from neghour.storage import get_store
 from neghour.storage.base import FeatureStore
 from neghour.timeutils import berlin_today, delivery_hours
@@ -43,6 +43,7 @@ class RunSummary:
     feature_rows: int
     label_rows: int
     missing_price_rows: int
+    missing_weather_rows: int
     duration_s: float
 
 
@@ -62,7 +63,9 @@ def run(
     fetch_start = first_day - timedelta(days=NEGATIVE_WINDOW_DAYS)
     prices = smard.fetch_prices(fetch_start, last_day)
 
-    features = build_features(prices, first_day, last_day)
+    weather = open_meteo.fetch_weather(first_day, last_day)
+
+    features = build_features(prices, weather, first_day, last_day)
     in_window = prices["delivery_utc"].isin(delivery_hours(first_day, last_day))
     labels = build_labels(prices[in_window])
 
@@ -79,6 +82,7 @@ def run(
         feature_rows=len(features),
         label_rows=len(labels),
         missing_price_rows=int(features["missing_price"].sum()),
+        missing_weather_rows=int(features["missing_weather"].sum()),
         duration_s=round(time.monotonic() - started, 1),
     )
 
@@ -97,6 +101,7 @@ def write_step_summary(summary: RunSummary) -> None:
         f"| Feature rows | {summary.feature_rows} |",
         f"| Label rows | {summary.label_rows} |",
         f"| Rows with missing price inputs | {summary.missing_price_rows} |",
+        f"| Rows with missing weather inputs | {summary.missing_weather_rows} |",
         f"| Duration (s) | {summary.duration_s} |",
     ]
     with open(path, "a", encoding="utf-8") as handle:

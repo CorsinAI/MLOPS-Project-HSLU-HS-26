@@ -1,0 +1,36 @@
+name: Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      first_day:
+        description: First delivery day (YYYY-MM-DD)
+        default: "2024-01-01"
+        required: true
+      last_day:
+        description: Last delivery day (YYYY-MM-DD); leave empty for tomorrow
+        required: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run backfill
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          FIRST_DAY: ${{ inputs.first_day }}
+          LAST_DAY: ${{ inputs.last_day }}
+        run: |
+          args=(--first-day "$FIRST_DAY")
+          if [ -n "$LAST_DAY" ]; then args+=(--last-day "$LAST_DAY"); fi
+          uv run --frozen python -m neghour.pipelines.backfill "${args[@]}"

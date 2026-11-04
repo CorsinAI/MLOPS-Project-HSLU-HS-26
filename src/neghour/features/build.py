@@ -18,6 +18,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from neghour.sources.open_meteo import WEATHER_COLUMNS
 from neghour.timeutils import (
     cutoff_utc,
     delivery_days,
@@ -88,10 +89,22 @@ def build_price_features(
     return pd.concat(frames, ignore_index=True)
 
 
+def add_weather_features(features: pd.DataFrame, weather: pd.DataFrame) -> pd.DataFrame:
+    """Join weather forecasts, keeping only values published by the row cut-off."""
+    merged = features.merge(weather, on="delivery_utc", how="left")
+    too_late = ~(merged["available_at_weather"] <= merged["cutoff_utc"])
+    merged[WEATHER_COLUMNS] = merged[WEATHER_COLUMNS].mask(too_late)
+    merged["available_at_weather"] = merged["available_at_weather"].mask(too_late)
+    merged["missing_weather"] = merged[WEATHER_COLUMNS].isna().any(axis=1)
+    return merged
+
+
 def build_features(
-    prices: pd.DataFrame, first_day: date, last_day: date
+    prices: pd.DataFrame, weather: pd.DataFrame, first_day: date, last_day: date
 ) -> pd.DataFrame:
     """Return the full feature frame for the given delivery days."""
     features = build_price_features(prices, first_day, last_day)
-    features["available_at"] = features["available_at_price"]
+    features = add_weather_features(features, weather)
+    availability = features[["available_at_price", "available_at_weather"]]
+    features["available_at"] = availability.max(axis=1)
     return features

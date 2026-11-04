@@ -19,6 +19,13 @@ FEATURE_COLUMNS: list[str] = [
     "neg_hours_last_7d",
     "available_at_price",
     "missing_price",
+    # weather features
+    "irradiance",
+    "cloud_cover",
+    "wind_100m",
+    "temperature",
+    "available_at_weather",
+    "missing_weather",
 ]
 
 LABEL_COLUMNS: list[str] = [
@@ -31,6 +38,7 @@ LABEL_COLUMNS: list[str] = [
 AVAILABILITY_COLUMNS: list[str] = [
     "available_at",
     "available_at_price",
+    "available_at_weather",
 ]
 
 
