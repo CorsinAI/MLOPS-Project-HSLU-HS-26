@@ -30,3 +30,4 @@ changed and why, so `docs/ms2_summary.pdf` can point here.
 | 23 | 2026-11-04 | The editorial uses E2 twice; `ms2_summary.pdf` splits them into E2a and E2b. | Every point needs its own entry, and the split is stated in the PDF. |
 | 24 | 2026-11-04 | Third cron slot at 12:17 UTC (13:17 CET, 14:17 CEST) for label refresh. No pipeline code changed. | Owner decision. The next day's prices do not exist during the morning slots. It also adds a scheduled chance before the deadline. |
 | 25 | 2026-11-04 | `ms2_summary.pdf` has two numbered sections, and section 1 opens with what to look at first. | Owner decision, so reviewers find it at once. |
+| 26 | 2026-11-04 | Added a manual `docker_run.yml` that runs the real pipeline in the image. | CI only built the image and imported the module, and the course grades what actually ran. Not part of CI, because each run writes to Hopsworks. |

@@ -212,6 +212,7 @@ Refresh them with `uv run --frozen python scripts/record_fixtures.py`.
 | `backfill.yml` | Manual | Backfill, then a report on stored data |
 | `ci.yml` | Push to main, PR, or manual | Lock check, ruff, pytest, Docker build |
 | `check_hopsworks.yml` | Manual | Hopsworks round-trip check |
+| `docker_run.yml` | Manual | Builds the image and runs the pipeline inside it |
 | `weekly_training.yml` | Manual | Not implemented until MS3 |
 
 GitHub cron is in UTC and has started this repo's jobs 4 to 9 hours late, so the

@@ -1,0 +1,21 @@
+name: Docker run
+
+# Runs the real feature pipeline inside the image, not only an import check.
+# Keys are passed at run time and are never part of the image.
+on:
+  workflow_dispatch:
+
+jobs:
+  run-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t neghour .
+
+      - name: Run the feature pipeline in the container
+        env:
+          HOPSWORKS_HOST: ${{ vars.HOPSWORKS_HOST }}
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: docker run --rm -e HOPSWORKS_HOST -e HOPSWORKS_API_KEY neghour
