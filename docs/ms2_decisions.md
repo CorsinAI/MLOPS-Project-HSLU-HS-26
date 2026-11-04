@@ -21,3 +21,5 @@ changed and why, so `docs/ms2_summary.pdf` can point here.
 | 14 | 2026-11-04 | During a source outage the daily run writes only the newest delivery day. Backfills fail instead. | The daily run rebuilds 8 days, so an outage could otherwise overwrite good rows with NaN. |
 | 15 | 2026-11-04 | Holiday weights use population by state for 2025 (census 2022), statistikportal.de. Luxembourg is left out. | Official figures; the table sums to the published 83,467,117. Luxembourg is about 0.8 % of the zone. |
 | 16 | 2026-11-04 | `is_holiday` is 1 only when all 16 states are off; `holiday_share` carries regional holidays. | Keeps the binary flag meaningful next to the share (B2). |
+| 17 | 2026-11-04 | Feature group stays at version 1; no version bump. | Nothing was written before the schema was final, so the bump in the plan is unnecessary. |
+| 18 | 2026-11-04 | A leakage test failed to catch a removed weather filter, so late-publishing sources now have their own tests. | Found by deliberately breaking the code. All filters are now shown to be covered. |
