@@ -49,17 +49,17 @@ The editorial uses E2 twice, so its two uses appear here as E2a and E2b.
 
 | ID | Point | Status | Answer | Commit or file |
 |---|---|---|---|---|
-| A1 | Same weather vintage in backfill and live | Changed | `_previous_day2` in both. Valid-time availability is T − 48 h + 6 h. | 304cb25, `sources/open_meteo.py` |
-| A2 | Europe/Berlin everywhere; CET/CEST in UTC cron | Changed | UTC storage, Berlin days. 23 and 25 hour days tested and confirmed in storage. | 49ebba4, b9f0ddc, `timeutils.py` |
+| A1 | Same weather vintage in backfill and live | Changed | `_previous_day2` in both: `_previous_day1` would use runs after the cut-off for later hours. Availability is T − 48 h + 6 h. | 304cb25, `sources/open_meteo.py` |
+| A2 | Europe/Berlin everywhere; CET/CEST in UTC cron | Changed | Europe/Berlin stated throughout; storage in UTC. The cut-off is computed in Berlin time, so the UTC cron shift cannot move it. 23 and 25 hour days tested and confirmed in storage. | 49ebba4, b9f0ddc, `timeutils.py` |
 | A3 | Test that fails on data after the cut-off | Changed | Checked before each write, by tests, and on the full stored table: 0 late rows. | 245c48b, aa75bc7, 689eb2f |
-| B1 | Start before 10:00; define late and missing data | Changed | Morning cron at 01:17 and 05:17 UTC, since runs started 4–9 h late; 12:17 UTC refreshes labels. Policy in the README. | c91f563, dc8bdbf, 94863b8 |
+| B1 | Start before 10:00; define late and missing data | Changed | Morning cron at 01:17 and 05:17 UTC, since runs started 4–9 h late; 12:17 UTC refreshes labels. The 10:00 data cut-off stays. A missing or late input gives NaN plus a flag and a log line, not the last value, which would look like real data. | c91f563, dc8bdbf, 94863b8 |
 | B2 | Weighted holiday share | Changed | `holiday_share` by state population, next to `is_holiday`. | c0d414d, `features/calendar.py` |
-| E1 | Hourly label after the 15-minute switch | Changed | Hourly mean, justified by one label across all splits; quarter count stored. | 6603e83, 6f812e5, 85bbfe8 |
+| E1 | Hourly label after the 15-minute switch | Changed | Checked: filter 4169 stays hourly and returns the mean of the four quarters after the switch; `smard.py` reads both resolutions. A battery operator acts per quarter, but quarter prices do not exist before the switch, so only the hourly mean gives one label across train, validation and test. Since the switch 510 hours are negative by mean, 626 by any quarter, 408 by all four, so the label misses 116 actionable hours. `n_neg_quarters` lets MS3 test the any-quarter label without a rebuild. | 6603e83, 6f812e5, 85bbfe8 |
 | E2a | Resolve the confusing proposal points | Changed | Addendum lists each change; the submitted proposal is untouched. | 5d9084c, `proposal_addendum.md` |
 | E2a-i | Classification or price prediction | Changed | Classification only: the decision is yes or no per hour. | 6f812e5, `proposal_addendum.md` |
-| E2a-ii | Region covered by each input | Changed | Four points, averaged per variable; reasoning in the README. | 304cb25, 72e3906 |
-| E2a-iii | Seasonality within year, day and week | Partly | Features built and argued. Modelling follows in MS3. | c0d414d, `README.md` |
+| E2a-ii | Region covered by each input | Changed | Prices and load are zone-wide (DE-LU). Weather varies, so four points, averaged per variable; reasoning in the README. | 304cb25, 72e3906 |
+| E2a-iii | Seasonality within year, day and week | Partly | Features for all three cycles: day, week and year sine and cosine pairs plus `is_weekend`, argued in the README. Modelling follows in MS3. | c0d414d, `README.md` |
 | E2a-iv | Upsampling causes training-serving skew | Partly | Upsampling rejected in writing. `scale_pos_weight` follows in MS3. | 021b736, `README.md` |
-| E2b | Originality against KTH SE3 regressors | Changed | README states the difference: yes or no per hour, not a price level. | 021b736, `README.md` |
-| E3 | Rolling PR-AUC/F1 and drift check | Not yet | Needs a model, so it is planned after MS3 training. | None yet |
+| E2b | Originality against KTH SE3 regressors | Partly | README states the difference: rare-event classification for DE-LU, not a price level. The statement that the check was done is not added yet. | 021b736, `README.md` |
+| E3 | Rolling PR-AUC/F1 and drift check | Partly | Plan written: rolling PR-AUC and F1 against both baselines, and a drift check. Not built, because it needs a model. | `README.md`, Monitoring plan |
 | E4 | Commit in small steps | Changed | Over 30 focused commits, one pull request per phase. | PRs 1, 2, 4–10, `git log` |

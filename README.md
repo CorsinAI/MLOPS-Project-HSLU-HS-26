@@ -238,6 +238,18 @@ and statistics off, so the client writes the tables directly and inserts start n
 Spark job. Reads go through the Feature Query Service. Creating the groups also
 created two `compute_stats` job definitions; neither has run.
 
+## Monitoring plan (MS3)
+
+Not built yet, because it needs a model and stored predictions. The plan:
+
+- **Rolling scores:** PR-AUC and F1 over the last 30 delivery days, joining
+  predictions to labels on the UTC hour, for the model and for both baselines
+  (same hour on D-1 and on D-7). Negative hours are rare and seasonal, so a
+  window with few of them is reported as such, not as a score.
+- **Drift check:** each week, compare `residual_load_proxy`, `wind_100m` and
+  `irradiance` with the training window using the population stability index,
+  and warn above 0.2.
+
 ## Repository
 
 ```text
