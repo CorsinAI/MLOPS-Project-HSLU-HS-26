@@ -157,12 +157,12 @@ would make backfilled rows slightly cleaner than live ones. This has not been me
 
 ## Setup
 
-Requires Python 3.11 and [uv](https://docs.astral.sh/uv/). A free
-[Hopsworks](https://app.hopsworks.ai) account is needed to store data.
+Requires Python 3.11 and [uv](https://docs.astral.sh/uv/). A
+[Hopsworks](https://www.hopsworks.ai) project is needed to store data.
 
 ```bash
 uv sync --frozen --extra dev
-cp .env.example .env   # add HOPSWORKS_API_KEY; never commit this file
+cp .env.example .env   # add HOPSWORKS_API_KEY to .env; never commit that file
 ```
 
 ## Run
@@ -221,6 +221,13 @@ anything the first one missed.
 
 **Secret:** `HOPSWORKS_API_KEY` in GitHub Secrets. Locally it goes in `.env`, which
 is gitignored.
+
+**Variable:** `HOPSWORKS_HOST` in GitHub Variables, the Hopsworks instance host. It
+is not a secret and is not hardcoded, so the code runs against any instance.
+
+**Hopsworks cost:** the feature groups are offline only, with `stream=False`, Delta
+and statistics off, so the client writes the tables directly and inserts start no
+Spark job. Reads go through the Feature Query Service.
 
 ## Repository
 

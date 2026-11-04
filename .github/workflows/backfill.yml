@@ -27,6 +27,7 @@ jobs:
 
       - name: Run backfill
         env:
+          HOPSWORKS_HOST: ${{ vars.HOPSWORKS_HOST }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
           FIRST_DAY: ${{ inputs.first_day }}
           LAST_DAY: ${{ inputs.last_day }}
@@ -37,5 +38,6 @@ jobs:
 
       - name: Report on stored data
         env:
+          HOPSWORKS_HOST: ${{ vars.HOPSWORKS_HOST }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: uv run --frozen python scripts/check_store_quality.py
