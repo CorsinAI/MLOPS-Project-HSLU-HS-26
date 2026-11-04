@@ -5,44 +5,31 @@ from datetime import UTC, date, datetime, timedelta
 import pandas as pd
 import pytest
 
-from neghour.availability import price_available_at, weather_available_at
 from neghour.features.validation import LeakageError
 from neghour.pipelines import backfill, feature_pipeline
 from neghour.sources import open_meteo, smard
+from neghour.sources.http import SourceUnavailableError
 from neghour.storage.memory import MemoryStore
-from neghour.timeutils import delivery_hours
+from tests.frames import actuals_frame, price_frame, weather_frame
 
 FIRST_DAY = date(2026, 1, 8)
 LAST_DAY = date(2026, 1, 15)
 
 
+def fake_quarters(first_day: date, last_day: date) -> pd.Series:
+    return smard.empty_negative_quarters()
+
+
 @pytest.fixture
 def fake_prices(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fetch(first_day: date, last_day: date) -> pd.DataFrame:
-        hours = delivery_hours(first_day, last_day)
-        return pd.DataFrame(
-            {
-                "delivery_utc": hours,
-                "price_eur_mwh": 50.0,
-                "available_at": price_available_at(hours),
-            }
-        )
+    monkeypatch.setattr(smard, "fetch_prices", price_frame)
+    monkeypatch.setattr(smard, "fetch_negative_quarters", fake_quarters)
+    monkeypatch.setattr(smard, "fetch_actuals", actuals_frame)
+    monkeypatch.setattr(open_meteo, "fetch_weather", weather_frame)
 
-    def fetch_weather(first_day: date, last_day: date) -> pd.DataFrame:
-        hours = delivery_hours(first_day, last_day)
-        return pd.DataFrame(
-            {
-                "delivery_utc": hours,
-                "irradiance": 100.0,
-                "cloud_cover": 50.0,
-                "wind_100m": 8.0,
-                "temperature": 12.0,
-                "available_at_weather": weather_available_at(hours),
-            }
-        )
 
-    monkeypatch.setattr(smard, "fetch_prices", fetch)
-    monkeypatch.setattr(open_meteo, "fetch_weather", fetch_weather)
+def fail(*args: object) -> None:
+    raise SourceUnavailableError("down")
 
 
 def test_daily_window_uses_the_berlin_calendar() -> None:
@@ -93,3 +80,56 @@ def test_backfill_arguments() -> None:
     argv = ["--first-day", "2025-02-03", "--last-day", "2025-02-04"]
     args = backfill.parse_args(argv)
     assert (args.first_day, args.last_day) == (date(2025, 2, 3), date(2025, 2, 4))
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_weather_outage_gives_nan_and_keeps_good_stored_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = MemoryStore()
+    feature_pipeline.run(FIRST_DAY, LAST_DAY, store)
+    before = store.read_features()
+
+    monkeypatch.setattr(open_meteo, "fetch_weather", fail)
+    summary = feature_pipeline.run(FIRST_DAY, LAST_DAY, store, tolerate_missing=True)
+    after = store.read_features()
+
+    assert summary.failed_sources == ("open_meteo",)
+    assert summary.feature_rows == 24
+    newest = after["delivery_day"] == LAST_DAY.isoformat()
+    assert after.loc[newest, "missing_weather"].all()
+    assert after.loc[newest, "wind_100m"].isna().all()
+    pd.testing.assert_frame_equal(
+        after[~newest].reset_index(drop=True),
+        before[before["delivery_day"] != LAST_DAY.isoformat()].reset_index(drop=True),
+    )
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_smard_outage_keeps_stored_labels(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = MemoryStore()
+    feature_pipeline.run(FIRST_DAY, LAST_DAY, store)
+    labels = store.read_labels()
+
+    monkeypatch.setattr(smard, "fetch_prices", fail)
+    feature_pipeline.run(FIRST_DAY, LAST_DAY, store, tolerate_missing=True)
+    pd.testing.assert_frame_equal(labels, store.read_labels())
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_both_main_sources_down_fails_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(smard, "fetch_prices", fail)
+    monkeypatch.setattr(open_meteo, "fetch_weather", fail)
+    store = MemoryStore()
+    with pytest.raises(SourceUnavailableError):
+        feature_pipeline.run(FIRST_DAY, LAST_DAY, store, tolerate_missing=True)
+    assert store.read_features().empty
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_strict_run_stops_on_an_outage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(open_meteo, "fetch_weather", fail)
+    store = MemoryStore()
+    with pytest.raises(SourceUnavailableError):
+        feature_pipeline.run(FIRST_DAY, LAST_DAY, store)
+    assert store.read_features().empty
