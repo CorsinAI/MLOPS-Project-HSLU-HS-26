@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -11,8 +11,8 @@ import pytest
 from neghour import config
 
 WORKFLOW = Path(".github/workflows/daily_pipeline.yml")
-WINTER = datetime(2026, 1, 15, tzinfo=timezone.utc)
-SUMMER = datetime(2026, 7, 15, tzinfo=timezone.utc)
+WINTER = datetime(2026, 1, 15, tzinfo=UTC)
+SUMMER = datetime(2026, 7, 15, tzinfo=UTC)
 DAY_AHEAD_PUBLISHED_HOUR = 13
 
 
