@@ -26,5 +26,6 @@ jobs:
 
       - name: Run feature pipeline
         env:
+          HOPSWORKS_HOST: ${{ vars.HOPSWORKS_HOST }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: uv run --frozen python -m neghour.pipelines.feature_pipeline

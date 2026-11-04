@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import sys
 
-import hopsworks
 import pandas as pd
 
 from neghour import config
+from neghour.storage.hopsworks_store import GROUP_SETTINGS, login
 
 GROUP_NAME = "neghour_conn_check"
 
@@ -21,10 +21,8 @@ def main() -> int:
         print("FAIL key: HOPSWORKS_API_KEY is not set")
         return 1
 
-    project = hopsworks.login(
-        project=config.HOPSWORKS_PROJECT, api_key_value=config.HOPSWORKS_API_KEY
-    )
-    print(f"PASS login: project {project.name}")
+    project = login()
+    print(f"PASS login: project {project.name} on {config.HOPSWORKS_HOST}")
 
     store = project.get_feature_store()
     group = store.get_or_create_feature_group(
@@ -32,17 +30,17 @@ def main() -> int:
         version=1,
         primary_key=["id"],
         event_time="ts",
-        online_enabled=False,
         description="Temporary NegativeHours connectivity check",
+        **GROUP_SETTINGS,
     )
     times = pd.date_range("2026-01-01", periods=3, freq="h", tz="UTC")
     rows = pd.DataFrame({"id": [1, 2, 3], "ts": times, "value": [1.0, 2.0, 3.0]})
     try:
-        group.insert(rows, write_options={"wait_for_job": True})
+        group.insert(rows)
         print("PASS insert: 3 rows")
 
         changed = rows.iloc[[0]].assign(value=9.0)
-        group.insert(changed, write_options={"wait_for_job": True})
+        group.insert(changed)
         result = group.read().sort_values("id")
         print(f"PASS read: {len(result)} rows, values {result['value'].tolist()}")
 
@@ -53,6 +51,9 @@ def main() -> int:
     finally:
         group.delete()
         print("PASS cleanup: temporary group deleted")
+
+    jobs = [job.name for job in project.get_job_api().get_jobs()]
+    print(f"INFO jobs in project: {len(jobs)} {jobs}")
     return 0
 
 

@@ -77,6 +77,7 @@ ENERGY_CHARTS_BASE_URL = "https://api.energy-charts.info"
 STORAGE_BACKEND: str = os.getenv("STORAGE_BACKEND", "hopsworks")
 
 # Hopsworks
+HOPSWORKS_HOST: str = os.getenv("HOPSWORKS_HOST", "")
 HOPSWORKS_PROJECT: str = os.getenv("HOPSWORKS_PROJECT", "neghour")
 HOPSWORKS_API_KEY: str = os.getenv("HOPSWORKS_API_KEY", "")
 
