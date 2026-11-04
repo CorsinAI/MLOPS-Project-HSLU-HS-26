@@ -25,9 +25,7 @@ Out-of-time split:
 
 from __future__ import annotations
 
-from datetime import date
 
-import pandas as pd
 
 # TODO: implement build_row(delivery_date: date, delivery_hour: int) -> pd.Series
 #       fetches all required source data and assembles one feature row

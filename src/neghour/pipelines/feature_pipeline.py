@@ -18,8 +18,8 @@ from datetime import date, timedelta
 
 # TODO: implement run(delivery_date: date | None = None) -> None
 #       default: delivery_date = date.today() + timedelta(days=1)  (tomorrow = D)
-# TODO: wire sources.smard / sources.energy_charts → features.build → validation → hopsworks
-# TODO: add structured logging: run_id, delivery_date, row_count, source_used, duration_s
+# TODO: wire sources, features.build, validation and storage together
+# TODO: add structured logging: run_id, delivery_date, row_count, duration_s
 # TODO: emit a GitHub Actions step summary with the 24-row preview
 
 

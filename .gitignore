@@ -7,9 +7,16 @@ build/
 .venv/
 venv/
 
-# Environment
+# Environment and credentials
 .env
 *.env
+.env.*
+!.env.example
+.hw_api_key
+*.pem
+*.key
+*service-account*.json
+*service_account*.json
 
 # Data / artifacts
 data/
@@ -19,6 +26,11 @@ mlruns/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
 # OS
 .DS_Store

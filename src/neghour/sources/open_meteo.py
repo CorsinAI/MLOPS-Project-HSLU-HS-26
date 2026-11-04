@@ -19,9 +19,7 @@ No API key required.
 
 from __future__ import annotations
 
-from datetime import date
 
-import pandas as pd
 
 # TODO: implement fetch_forecast(delivery_date: date) -> pd.DataFrame
 #       uses the live forecast endpoint; for daily pipeline runs

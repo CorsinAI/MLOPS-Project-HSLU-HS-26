@@ -69,7 +69,7 @@ flowchart TD
 ### Install
 
 ```bash
-uv sync
+uv sync --frozen --extra dev
 cp .env.example .env   # fill in HOPSWORKS_API_KEY and DAGSHUB_TOKEN
 ```
 
@@ -82,7 +82,8 @@ uv run python -m neghour.pipelines.feature_pipeline
 # Run inference after features are ready
 uv run python -m neghour.pipelines.inference_pipeline
 
-# Full retrain (runs weekly in CI)
+# Full retrain (not part of MS2; needs the train extra)
+uv sync --frozen --extra train
 uv run python -m neghour.pipelines.training_pipeline
 ```
 
@@ -95,6 +96,7 @@ uv run pytest tests/ -v
 ### Streamlit dashboard
 
 ```bash
+uv sync --frozen --extra app
 uv run streamlit run app/app.py
 ```
 

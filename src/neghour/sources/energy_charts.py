@@ -8,9 +8,7 @@ Native resolution: 15 minutes — resampled to hourly to match SMARD format.
 
 from __future__ import annotations
 
-from datetime import date
 
-import pandas as pd
 
 # TODO: implement fetch_prices(start: date, end: date) -> pd.DataFrame
 #       columns: delivery_date, delivery_hour, price_eur_mwh,
