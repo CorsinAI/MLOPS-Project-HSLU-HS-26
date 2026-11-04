@@ -29,6 +29,9 @@ OPEN_METEO_HISTORY_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
 # Energy-Charts (fallback)
 ENERGY_CHARTS_BASE_URL = "https://api.energy-charts.info"
 
+# Storage
+STORAGE_BACKEND: str = os.getenv("STORAGE_BACKEND", "hopsworks")
+
 # Hopsworks
 HOPSWORKS_PROJECT: str = os.getenv("HOPSWORKS_PROJECT", "neghour")
 HOPSWORKS_API_KEY: str = os.getenv("HOPSWORKS_API_KEY", "")
