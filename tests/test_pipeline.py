@@ -5,10 +5,10 @@ from datetime import UTC, date, datetime, timedelta
 import pandas as pd
 import pytest
 
-from neghour.availability import price_available_at
+from neghour.availability import price_available_at, weather_available_at
 from neghour.features.validation import LeakageError
-from neghour.pipelines import feature_pipeline
-from neghour.sources import smard
+from neghour.pipelines import backfill, feature_pipeline
+from neghour.sources import open_meteo, smard
 from neghour.storage.memory import MemoryStore
 from neghour.timeutils import delivery_hours
 
@@ -28,7 +28,21 @@ def fake_prices(monkeypatch: pytest.MonkeyPatch) -> None:
             }
         )
 
+    def fetch_weather(first_day: date, last_day: date) -> pd.DataFrame:
+        hours = delivery_hours(first_day, last_day)
+        return pd.DataFrame(
+            {
+                "delivery_utc": hours,
+                "irradiance": 100.0,
+                "cloud_cover": 50.0,
+                "wind_100m": 8.0,
+                "temperature": 12.0,
+                "available_at_weather": weather_available_at(hours),
+            }
+        )
+
     monkeypatch.setattr(smard, "fetch_prices", fetch)
+    monkeypatch.setattr(open_meteo, "fetch_weather", fetch_weather)
 
 
 def test_daily_window_uses_the_berlin_calendar() -> None:
@@ -72,3 +86,10 @@ def test_run_writes_nothing_on_leakage(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(LeakageError):
         feature_pipeline.run(FIRST_DAY, LAST_DAY, store)
     assert store.read_features().empty
+
+
+def test_backfill_arguments() -> None:
+    assert backfill.parse_args([]).first_day == date(2024, 1, 1)
+    argv = ["--first-day", "2025-02-03", "--last-day", "2025-02-04"]
+    args = backfill.parse_args(argv)
+    assert (args.first_day, args.last_day) == (date(2025, 2, 3), date(2025, 2, 4))
