@@ -2,14 +2,15 @@
 Streamlit dashboard — NegativeHours.
 
 Deployed on Hugging Face Spaces (free tier).
-Reads predictions and actuals from the Hopsworks predictions feature group.
+Reads predictions from the Hopsworks predictions feature group and outcomes from
+the labels feature group, joined on delivery_utc.
 
 Two views:
-  TOMORROW FORECAST  (available from ~10:05 Berlin time on D-1)
+  TOMORROW FORECAST  (available once the forecast for D is written)
     Hourly bar chart: P(negative) per delivery hour, colour-coded by risk level.
     Green < 20% · Yellow 20–50% · Red > 50%
 
-  PAST ACCURACY  (available after D-1 12:45 when actuals are published)
+  PAST ACCURACY  (available from 13:00 Berlin on D-1, when prices count as published)
     Forecast vs actual for the last 30 days.
     PR-AUC and F1 trend lines.
 """
