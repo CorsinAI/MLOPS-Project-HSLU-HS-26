@@ -13,9 +13,11 @@ Decisions and changes during MS2 are logged in
 [`docs/ms2_decisions.md`](docs/ms2_decisions.md). Changes to the original proposal
 are in [`docs/proposal_addendum.md`](docs/proposal_addendum.md).
 
-**Originality:** this is rare-event classification of negative hours for DE-LU. It
-differs from the KTH SE3 price regressors, which predict a price level for a
-Swedish zone; the decision here is yes or no per hour before the auction closes.
+**Originality:** this is rare-event classification of negative hours for DE-LU;
+the decision is yes or no per hour before the auction closes. I looked for the KTH
+SE3 price regressors named in the MS1 editorial and could not identify them exactly.
+The closest work I found is Vanherpe (2026), a KTH thesis I checked from its
+abstract, which studies how weather forecast errors affect intraday prices in SE3.
 
 ---
 
@@ -27,12 +29,13 @@ Binary classification. For each delivery hour:
 
 The market has cleared 15-minute products since 01.10.2025. SMARD's hourly series
 stays continuous across that switch: the hourly price before it, the mean of the
-four quarter hours after it. That gives one label definition across train,
-validation and test. Quarter prices do not exist before the switch, so a
-quarter-hour label would change meaning mid-dataset. A battery operator acts per
-quarter hour, so `n_neg_quarters` is stored as well, which lets an "any quarter
-< 0" label be tested later without rebuilding. SMARD rounds to two decimals, so a
-mean between −0.005 and 0 reads as 0.00 and counts as not negative.
+four quarter hours after it. The label therefore stays closest to the pre-switch
+hourly price across train, validation and test. Separate quarter prices only start
+at the switch, so an "any quarter" label would raise the share of negative hours at
+that date, and training and test would measure different things. A battery operator
+acts per quarter hour, so `n_neg_quarters` is stored as well, which lets that label
+be tested later without rebuilding. SMARD rounds to two decimals, so a mean between
+−0.005 and 0 reads as 0.00 and counts as not negative.
 
 ## Architecture
 
@@ -90,8 +93,8 @@ Each source also has an `available_at_*` column and a `missing_*` flag.
 
 ### Spatial coverage
 
-Prices and load cover the whole bidding zone. Weather does not, so it uses four
-fixed points, averaged per variable:
+Prices, production and load cover the whole bidding zone. Weather does not, so it
+uses four fixed points, averaged per variable:
 
 | Point | Location | Used for |
 |---|---|---|
