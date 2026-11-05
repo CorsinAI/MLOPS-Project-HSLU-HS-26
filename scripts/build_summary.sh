@@ -24,7 +24,8 @@ fi
 
 page="ms2_summary.html"
 trap 'rm -f "$page"' EXIT
-pandoc ms2_summary.md --standalone --columns=1000 --css ms2_summary.css \
+pandoc ms2_summary.md --from markdown+hard_line_breaks --standalone \
+    --columns=1000 --css ms2_summary.css \
     --metadata pagetitle="NegativeHours MS2 summary" --output "$page"
 
 if command -v cygpath >/dev/null 2>&1; then
