@@ -70,9 +70,6 @@ STATE_POPULATION: dict[str, int] = {
     "TH": 2_078_946,
 }
 
-# Energy-Charts (fallback)
-ENERGY_CHARTS_BASE_URL = "https://api.energy-charts.info"
-
 # Storage
 STORAGE_BACKEND: str = os.getenv("STORAGE_BACKEND", "hopsworks")
 

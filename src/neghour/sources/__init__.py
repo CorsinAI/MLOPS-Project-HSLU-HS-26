@@ -1,1 +1,1 @@
-"""Data source modules: SMARD, Open-Meteo, Energy-Charts."""
+"""Data source modules: SMARD and Open-Meteo."""

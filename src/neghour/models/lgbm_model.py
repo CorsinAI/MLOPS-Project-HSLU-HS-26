@@ -3,7 +3,7 @@ LightGBM model for negative-price binary classification.
 
 Target: P(DE-LU day-ahead price < 0) for each delivery hour.
 
-Handling the rare positive class (~3–6% of hours):
+Handling the rare positive class (about 6 % of hours):
   - scale_pos_weight = n_negative / n_positive balances the loss
   - Decision threshold is chosen on the validation set to maximise F1
     (default 0.5 is suboptimal for rare-event classification)

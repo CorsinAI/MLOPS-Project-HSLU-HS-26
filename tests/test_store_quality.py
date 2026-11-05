@@ -11,7 +11,9 @@ import pytest
 
 from neghour.features.build import build_features, build_labels
 from neghour.sources import smard
+from neghour.storage.memory import MemoryStore
 from neghour.timeutils import cutoff_utc
+from scripts import check_store_quality
 from scripts.check_store_quality import (
     CLOCK_CHANGE_DAYS,
     WIND_START,
@@ -97,6 +99,20 @@ def test_labels_for_other_hours_are_reported() -> None:
     features, labels = good_tables()
     failures = failures_of(features, labels.iloc[1:])
     assert "features and labels cover different hours" in failures
+
+
+def test_the_newest_day_may_wait_for_its_labels() -> None:
+    features, labels = good_tables()
+    newest = features.loc[features["delivery_day"] == LAST.isoformat(), "delivery_utc"]
+    assert failures_of(features, labels[~labels["delivery_utc"].isin(newest)]) == []
+
+
+def test_an_empty_store_fails_with_a_clear_message(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(check_store_quality, "get_store", MemoryStore)
+    assert check_store_quality.main() == 1
+    assert "no stored rows" in capsys.readouterr().out
 
 
 def test_times_returned_without_a_timezone_are_read_as_utc() -> None:

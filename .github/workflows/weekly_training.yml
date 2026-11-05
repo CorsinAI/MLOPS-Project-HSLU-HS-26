@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.11"
 
@@ -21,6 +21,7 @@ jobs:
 
       - name: Run training pipeline
         env:
+          HOPSWORKS_HOST: ${{ vars.HOPSWORKS_HOST }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
-        run: uv run python -m neghour.pipelines.training_pipeline
+        run: uv run --frozen python -m neghour.pipelines.training_pipeline

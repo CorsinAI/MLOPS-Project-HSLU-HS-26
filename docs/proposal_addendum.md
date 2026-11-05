@@ -14,9 +14,12 @@ where the project now differs from it, and why.
 | Weather vintage | History 2 days ahead, live latest | `_previous_day2` in both | Same forecast age in training and serving. `_previous_day1` would use post-cut-off runs for later hours. | A1 |
 | Weather location | Not stated | Four points, aggregated per variable | Germany's weather differs by region, and so do its wind and solar parks | E2 |
 | Publication time | 12:45 | 13:00 rule | SMARD has no per-row timestamp, so the rule stays conservative | A3 |
-| Storage | One Hopsworks store | Separate feature and label groups | Labels refresh daily; features stay as they were at the cut-off | |
+| Storage | One Hopsworks store | Separate feature and label groups | Labels only exist after the auction; features use only data available by the cut-off | |
 | Features | Listed | Adds `load_h_d7`, cyclical encodings, `is_weekend`, `holiday_share` | Proxy needs same-weekday demand; seasonality and regional holidays | E2, B2 |
 | Imbalance | "Extra weight" | `scale_pos_weight` in MS3; no upsampling | Upsampling would create training-serving skew | E2 |
 | Serving | Hourly chart | Unchanged for now | Later milestone | E3 |
+| Fallback source | Energy-Charts if SMARD is down | Not built | A failed source gives NaN plus a flag, and the next run repairs it | |
+| Training window | Train 2024 | Starts 2024-02-17 06:00 UTC; weekly retraining uses a rolling window, and the test year is used once | Earlier weather forecasts are missing, and a fixed window would repeat the same model | |
+| Orchestration | GitHub Actions cron | Kept for MS2; MS3 needs better control of the start time | Cron started 4–9 h late, and the forecast must be out before 12:00 | B1 |
 
 Details and smaller decisions are in `docs/ms2_decisions.md`.

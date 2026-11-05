@@ -23,7 +23,7 @@ jobs:
         run: uv sync --frozen --extra dev
 
       - name: Lint (ruff)
-        run: uv run --frozen ruff check src tests scripts
+        run: uv run --frozen ruff check src tests scripts app
 
       - name: Run tests
         run: uv run --frozen pytest tests/ -v

@@ -7,9 +7,10 @@ timestamp, so a late run writes the same features as an on-time run.
 
 Late or missing data: a source that still fails after retries gives NaN plus a
 `missing_*` flag, a warning and a step-summary line. Values are never carried
-forward. During an outage only the newest delivery day is written, so good
-stored rows are not overwritten, and the next run repairs that day. The run
-fails if storage or validation fails, or if SMARD and Open-Meteo are both down.
+forward. During an outage only the newest delivery day is written, never over
+a complete stored row, and labels are skipped if quarter counts are missing, so
+good stored data survives. The next run repairs what is missing. The run fails
+if storage or validation fails, or if SMARD and Open-Meteo are both down.
 A backfill passes tolerate_missing=False, so it fails instead of storing gaps.
 
 Invoked via:  python -m neghour.pipelines.feature_pipeline
@@ -25,6 +26,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import TypeVar
+
+import pandas as pd
 
 from neghour.features.build import NEGATIVE_WINDOW_DAYS, build_features, build_labels
 from neghour.features.validation import (
@@ -44,6 +47,7 @@ from neghour.timeutils import berlin_today, delivery_hours
 logger = logging.getLogger(__name__)
 
 DAILY_LOOKBACK_DAYS = 7
+MISSING_FLAGS = ["missing_price", "missing_weather", "missing_actuals"]
 
 T = TypeVar("T")
 
@@ -67,6 +71,17 @@ def daily_window(now: datetime | None = None) -> tuple[date, date]:
     """Return the delivery days a daily run rebuilds."""
     today = berlin_today(now)
     return today - timedelta(days=DAILY_LOOKBACK_DAYS), today + timedelta(days=1)
+
+
+def without_complete_stored_rows(
+    features: pd.DataFrame, stored: pd.DataFrame
+) -> pd.DataFrame:
+    """Return the rows that would not replace a complete stored row."""
+    if stored.empty:
+        return features
+    complete = ~stored[MISSING_FLAGS].astype(bool).any(axis=1)
+    hours = pd.to_datetime(stored.loc[complete, "delivery_utc"], utc=True)
+    return features[~features["delivery_utc"].isin(hours)]
 
 
 def run(
@@ -126,9 +141,13 @@ def run(
     validate_no_leakage(features)
 
     if failed:
-        features = features[features["delivery_day"] == last_day.isoformat()]
+        newest = features[features["delivery_day"] == last_day.isoformat()]
+        features = without_complete_stored_rows(newest, target.read_features())
+    if "smard_quarters" in failed:
+        labels = labels.head(0)
 
-    target.upsert_features(features)
+    if not features.empty:
+        target.upsert_features(features)
     if not labels.empty:
         target.upsert_labels(labels)
 
