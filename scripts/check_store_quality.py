@@ -69,7 +69,11 @@ def check_rows(features: pd.DataFrame, labels: pd.DataFrame) -> list[str]:
         failures.append(f"features have {len(features)} rows, expected {expected}")
     if feature_duplicates or label_duplicates:
         failures.append("duplicate UTC hours")
-    if set(features["delivery_utc"]) != set(labels["delivery_utc"]):
+    # The prices of the newest day may not be published yet.
+    newest = features["delivery_day"] == features["delivery_day"].max()
+    labelled = set(labels["delivery_utc"])
+    needs_label = set(features.loc[~newest, "delivery_utc"])
+    if not needs_label <= labelled or not labelled <= set(features["delivery_utc"]):
         failures.append("features and labels cover different hours")
     return failures
 
@@ -171,7 +175,11 @@ def run_checks(features: pd.DataFrame, labels: pd.DataFrame) -> list[str]:
 
 def main() -> int:
     store = get_store()
-    failures = run_checks(store.read_features(), store.read_labels())
+    features, labels = store.read_features(), store.read_labels()
+    if features.empty:
+        print("FAIL no stored rows")
+        return 1
+    failures = run_checks(features, labels)
     if config.STORAGE_BACKEND == "hopsworks":
         report_jobs()
 
