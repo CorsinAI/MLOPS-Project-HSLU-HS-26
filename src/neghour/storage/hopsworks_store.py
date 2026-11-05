@@ -1,8 +1,9 @@
 """
 Hopsworks backend.
 
-Features and labels live in separate feature groups, because labels refresh on
-every run while features stay as they were at the cut-off. The primary key is
+Features and labels live in separate feature groups, because labels only exist
+after the auction while features use only data available by the cut-off. Each run
+rewrites its whole window of both from current source values. The primary key is
 `delivery_epoch`: the UTC delivery hour as integer seconds. `delivery_utc` is
 the event time.
 

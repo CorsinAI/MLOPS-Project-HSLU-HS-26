@@ -29,7 +29,7 @@ The pipeline has run successfully when started by hand, on its daily schedule an
 - **Availability:** rule-based, because SMARD publishes no per-row timestamp.
 - **Late data:** NaN plus a `missing_*` flag, never carried forward.
 
-**Known limits:** GitHub cron is best effort, so a start before the cut-off is likely, not guaranteed. SMARD revisions and the stability of `_previous_day2` values between runs are not measured. The 6-hour publication margins are assumptions. One container run (41920298746) failed on a Hopsworks lock timeout, so writes now retry on server errors; that retry has only been tested with fakes. All decisions are in `docs/ms2_decisions.md`.
+**Known limits:** GitHub cron is best effort, so a start before the cut-off is likely, not guaranteed. `available_at` comes from rules, so the leakage checks prove the rules were followed, not when data really arrived. SMARD revisions and the stability of `_previous_day2` values between runs are not measured. The 6-hour publication margins are assumptions. One container run (41920298746) failed on a Hopsworks lock timeout, so writes now retry on server errors; that retry has only been tested with fakes. All decisions are in `docs/ms2_decisions.md`.
 
 ## 2. Response to reviews
 

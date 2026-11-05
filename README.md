@@ -123,7 +123,8 @@ Sine and cosine pairs let a model see that hour 23 is next to hour 0.
 `holiday_share` is the share of Germany's population with a public holiday that
 day, by state. Epiphany, for example, only applies in three states, so a binary flag
 would miss it. `is_holiday` is 1 only when all 16 states are off. Luxembourg is about
-0.8 % of the zone and is left out.
+0.8 % of the zone and is left out. Holidays that apply to only part of a state, such
+as Assumption Day in much of Bavaria, are not counted.
 
 ### Class imbalance
 
@@ -137,19 +138,23 @@ serving, which is training-serving skew.
   a warning, and a line in the GitHub step summary.
 - Values are never carried forward. A copied forecast or price would be invented
   data that looks real.
-- During an outage the daily run writes only the newest delivery day, so good rows
-  are not overwritten. The next run repairs that day.
+- During an outage the daily run writes only the newest delivery day, and never over
+  a complete stored row. Labels are skipped if quarter counts are missing. The next
+  run repairs what is missing.
 - Hopsworks writes retry on server errors, because upserts are safe to repeat.
 - The run fails if validation or storage fails, or if SMARD and Open-Meteo are both
-  down. A backfill fails instead of storing gaps.
+  down. A backfill fails when a source is down.
 
 **Backfill coverage:** rows start at 2024-01-01, but archived forecasts start later.
 Solar, cloud and temperature forecasts begin on 2024-01-20 12:00 UTC, and 100 m wind
 on 2024-02-17 06:00 UTC. Earlier hours stay as NaN with `missing_weather` set, and
-the training-window cut is an MS3 decision.
+MS3 training drops them.
 
-**Known limitation:** SMARD actuals may be revised after first publication, which
+**Known limitations:** SMARD actuals may be revised after first publication, which
 would make backfilled rows slightly cleaner than live ones. This has not been measured.
+Each run also rewrites its whole window from current source values, and `available_at`
+comes from rules. The leakage checks therefore prove the rules were followed, not when
+data really arrived.
 
 ## Data sources and licences
 
@@ -202,7 +207,7 @@ Keys are passed at run time and are never part of the image.
 
 ```bash
 uv run --frozen pytest -v
-uv run --frozen ruff check src tests scripts
+uv run --frozen ruff check src tests scripts app
 ```
 
 Source tests use recorded API responses in `tests/fixtures`, never live calls.
@@ -222,7 +227,8 @@ Refresh them with `uv run --frozen python scripts/record_fixtures.py`.
 GitHub cron is in UTC and has started this repo's jobs 4 to 9 hours late, so the
 daily run has two morning slots: 02:17 and 06:17 CET, or 03:17 and 07:17 CEST.
 Because rows are selected by timestamp, late runs stay correct, and the second
-run repairs anything the first one missed.
+run repairs anything the first one missed. MS3 needs a scheduler with better control
+of the start time, because a forecast must be out before the auction closes at 12:00.
 
 A third slot at 12:17 UTC (13:17 CET, 14:17 CEST) refreshes labels. The auction
 closes at 12:00, so the morning runs cannot see the next day's prices. This run
@@ -263,5 +269,8 @@ src/neghour/
 ├── sources/          SMARD, Open-Meteo
 ├── features/         build, calendar, validation
 ├── storage/          interface, Hopsworks, in-memory
-└── pipelines/        feature pipeline, backfill
+├── models/           baselines and LightGBM, stubs until MS3
+└── pipelines/        feature pipeline and backfill; training and inference are stubs
+
+app/app.py            dashboard placeholder until MS3
 ```
