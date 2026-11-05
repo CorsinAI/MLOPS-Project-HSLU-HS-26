@@ -19,10 +19,10 @@ The feature pipeline runs end to end. GitHub Actions fetches SMARD data and Open
 |---|---|---|
 | Hopsworks round trip | Login, insert, upsert in place, read and delete all passed | 41913408675 |
 | Daily pipeline, manual start | Success: 216 feature and 216 label rows, no failed source | 41914046157 |
-| Scheduled daily run | Cron is live on `main`; first slots are 01:17, 05:17 and 12:17 UTC on 05.11. Not yet proven | Pending |
+| Scheduled daily run | Success on `main`, event `schedule`, started 05.11. 07:56 UTC (08:56 Berlin): 216 feature and 192 label rows, no failed source. Labels for 06.11. did not exist yet | 41990774545 |
 | Full backfill and stored-data report | Success in 243 s; all checks passed, and again on rerun | 41915601205, 41921336517 |
 | Pipeline inside the Docker image | Success: 216 feature and 216 label rows | 41920910156 |
-| CI on `main` | Lock check, ruff, 136 tests and Docker build passed | 41920897685 |
+| CI on `main` | Lock check, ruff, 136 tests and Docker build passed | 41923108044 |
 
 **Stored data, read back from Hopsworks after the backfill:**
 
@@ -41,7 +41,7 @@ The feature pipeline runs end to end. GitHub Actions fetches SMARD data and Open
 - **Availability:** rule-based, because SMARD publishes no per-row timestamp.
 - **Late data:** NaN plus a `missing_*` flag, never carried forward.
 
-**Known limits:** SMARD revisions and the stability of `_previous_day2` values between runs are not measured. The 6-hour publication margins are assumptions. One container run (41920298746) failed on a Hopsworks lock timeout, so writes now retry on server errors; that retry has only been tested with fakes. All decisions are in `docs/ms2_decisions.md`.
+**Known limits:** GitHub cron is best effort, so a start before the cut-off is likely, not guaranteed. SMARD revisions and the stability of `_previous_day2` values between runs are not measured. The 6-hour publication margins are assumptions. One container run (41920298746) failed on a Hopsworks lock timeout, so writes now retry on server errors; that retry has only been tested with fakes. All decisions are in `docs/ms2_decisions.md`.
 
 ## 2. Response to reviews
 
@@ -52,7 +52,7 @@ The editorial uses E2 twice, so its two uses appear here as E2a and E2b.
 | A1 | Same weather vintage in backfill and live | Changed | `_previous_day2` in both: `_previous_day1` would use runs after the cut-off for later hours. Availability is T − 48 h + 6 h. | 304cb25, `sources/open_meteo.py` |
 | A2 | Europe/Berlin everywhere; CET/CEST in UTC cron | Changed | Europe/Berlin stated throughout; storage in UTC. The cut-off is computed in Berlin time, so the UTC cron shift cannot move it. 23 and 25 hour days tested and confirmed in storage. | 49ebba4, b9f0ddc, `timeutils.py` |
 | A3 | Test that fails on data after the cut-off | Changed | Checked before each write, by tests, and on the full stored table: 0 late rows. | 245c48b, aa75bc7, 689eb2f |
-| B1 | Start before 10:00; define late and missing data | Changed | Morning cron at 01:17 and 05:17 UTC, since runs started 4–9 h late; 12:17 UTC refreshes labels. The 10:00 data cut-off stays. A missing or late input gives NaN plus a flag and a log line, not the last value, which would look like real data. | c91f563, dc8bdbf, 94863b8 |
+| B1 | Start before 10:00; define late and missing data | Changed | Morning cron at 01:17 and 05:17 UTC, since runs started 4–9 h late; 12:17 UTC refreshes labels. The first scheduled run started at 08:56 Berlin, before the cut-off. The 10:00 data cut-off stays. A missing or late input gives NaN plus a flag and a log line, not the last value, which would look like real data. | c91f563, dc8bdbf, 94863b8 |
 | B2 | Weighted holiday share | Changed | `holiday_share` by state population, next to `is_holiday`. | c0d414d, `features/calendar.py` |
 | E1 | Hourly label after the 15-minute switch | Changed | Checked: filter 4169 stays hourly and returns the mean of the four quarters after the switch; `smard.py` reads both resolutions. A battery operator acts per quarter, but quarter prices do not exist before the switch, so only the hourly mean gives one label across train, validation and test. Since the switch 510 hours are negative by mean, 626 by any quarter, 408 by all four, so the label misses 116 actionable hours. `n_neg_quarters` lets MS3 test the any-quarter label without a rebuild. | 6603e83, 6f812e5, 85bbfe8 |
 | E2a | Resolve the confusing proposal points | Changed | Addendum lists each change; the submitted proposal is untouched. | 5d9084c, `proposal_addendum.md` |
@@ -62,4 +62,4 @@ The editorial uses E2 twice, so its two uses appear here as E2a and E2b.
 | E2a-iv | Upsampling causes training-serving skew | Partly | Upsampling rejected in writing. `scale_pos_weight` follows in MS3. | 021b736, `README.md` |
 | E2b | Originality against KTH SE3 regressors | Partly | README states the difference: rare-event classification for DE-LU, not a price level. The statement that the check was done is not added yet. | 021b736, `README.md` |
 | E3 | Rolling PR-AUC/F1 and drift check | Partly | Plan written: rolling PR-AUC and F1 against both baselines, and a drift check. Not built, because it needs a model. | `README.md`, Monitoring plan |
-| E4 | Commit in small steps | Changed | Over 30 focused commits, one pull request per phase. | PRs 1, 2, 4–10, `git log` |
+| E4 | Commit in small steps | Changed | Over 40 focused commits, one pull request per phase or fix. | PRs 1, 2, 4–14, `git log` |
