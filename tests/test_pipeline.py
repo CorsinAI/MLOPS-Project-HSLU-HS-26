@@ -95,14 +95,58 @@ def test_weather_outage_gives_nan_and_keeps_good_stored_rows(
     after = store.read_features()
 
     assert summary.failed_sources == ("open_meteo",)
+    assert summary.feature_rows == 0
+    pd.testing.assert_frame_equal(after, before)
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_outage_stores_a_new_day_with_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = MemoryStore()
+    feature_pipeline.run(FIRST_DAY, LAST_DAY - timedelta(days=1), store)
+    before = store.read_features()
+
+    monkeypatch.setattr(open_meteo, "fetch_weather", fail)
+    summary = feature_pipeline.run(FIRST_DAY, LAST_DAY, store, tolerate_missing=True)
+    after = store.read_features()
+
     assert summary.feature_rows == 24
     newest = after["delivery_day"] == LAST_DAY.isoformat()
     assert after.loc[newest, "missing_weather"].all()
     assert after.loc[newest, "wind_100m"].isna().all()
-    pd.testing.assert_frame_equal(
-        after[~newest].reset_index(drop=True),
-        before[before["delivery_day"] != LAST_DAY.isoformat()].reset_index(drop=True),
+    pd.testing.assert_frame_equal(after[~newest].reset_index(drop=True), before)
+
+
+def test_complete_rows_are_found_when_storage_drops_the_timezone() -> None:
+    hours = pd.date_range("2026-01-15", periods=2, freq="h", tz="UTC")
+    features = pd.DataFrame({"delivery_utc": hours})
+    stored = pd.DataFrame(
+        {
+            "delivery_utc": hours.tz_localize(None),
+            "missing_price": [False, False],
+            "missing_weather": [False, True],
+            "missing_actuals": [False, False],
+        }
     )
+    kept = feature_pipeline.without_complete_stored_rows(features, stored)
+    assert kept["delivery_utc"].tolist() == [hours[1]]
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_quarter_outage_keeps_stored_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    def two_negative_quarters(first_day: date, last_day: date) -> pd.Series:
+        hours = pd.DatetimeIndex(price_frame(first_day, last_day)["delivery_utc"])
+        return pd.Series(2.0, index=hours, name="n_neg_quarters")
+
+    monkeypatch.setattr(smard, "fetch_negative_quarters", two_negative_quarters)
+    store = MemoryStore()
+    feature_pipeline.run(FIRST_DAY, LAST_DAY, store)
+    labels = store.read_labels()
+
+    monkeypatch.setattr(smard, "fetch_negative_quarters", fail)
+    summary = feature_pipeline.run(FIRST_DAY, LAST_DAY, store, tolerate_missing=True)
+
+    assert summary.label_rows == 0
+    pd.testing.assert_frame_equal(labels, store.read_labels())
 
 
 @pytest.mark.usefixtures("fake_prices")
