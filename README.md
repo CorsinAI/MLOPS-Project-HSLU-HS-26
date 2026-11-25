@@ -170,7 +170,7 @@ Requires Python 3.11 and [uv](https://docs.astral.sh/uv/). A
 [Hopsworks](https://www.hopsworks.ai) project is needed to store data.
 
 ```bash
-uv sync --frozen --extra dev
+uv sync --frozen --extra dev --extra train
 cp .env.example .env   # add HOPSWORKS_API_KEY to .env; never commit that file
 ```
 
@@ -269,7 +269,7 @@ src/neghour/
 ├── sources/          SMARD, Open-Meteo
 ├── features/         build, calendar, validation
 ├── storage/          interface, Hopsworks, in-memory
-├── models/           baselines and LightGBM, stubs until MS3
+├── models/           baselines and LightGBM wrapper
 └── pipelines/        feature pipeline and backfill; training and inference are stubs
 
 app/app.py            dashboard placeholder until MS3

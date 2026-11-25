@@ -10,7 +10,9 @@ NaiveLastWeek:
   Rationale: weather and demand patterns repeat weekly.
 
 Both read the stored price features, which already follow the Berlin wall clock
-across clock changes and respect the cut-off.
+across clock changes and respect the cut-off. A missing lag predicts 0, the
+majority class. The label uses the same rule, price < 0, so a stored 0.00 is
+not negative in either.
 
 Success criterion (proposal section 1):
   F1(LightGBM) >= max(F1(NaiveYesterday), F1(NaiveLastWeek)) + 0.10
@@ -18,11 +20,36 @@ Success criterion (proposal section 1):
 
 from __future__ import annotations
 
+from typing import ClassVar
 
-# TODO: define BaselineModel protocol with predict(df: pd.DataFrame) -> pd.Series
+import numpy as np
+import pandas as pd
 
-# TODO: implement class NaiveYesterday(BaselineModel) from price_h_d1
 
-# TODO: implement class NaiveLastWeek(BaselineModel) from price_h_d7
+class NaiveBaseline:
+    """Predicts a negative hour when the lagged price of that hour was negative."""
 
-# TODO: both classes predict 0, the majority class, when the lag is missing
+    name: ClassVar[str]
+    lag_column: ClassVar[str]
+
+    def predict(self, features: pd.DataFrame) -> np.ndarray:
+        """Return 0 or 1 per row; a missing lag gives 0."""
+        lag = features[self.lag_column].astype("float64")
+        return (lag < 0).to_numpy(dtype="int64")
+
+    def predict_proba(self, features: pd.DataFrame) -> np.ndarray:
+        """Return the 0 or 1 prediction as a score, so PR-AUC can be computed."""
+        return self.predict(features).astype("float64")
+
+
+class NaiveYesterday(NaiveBaseline):
+    name = "naive_yesterday"
+    lag_column = "price_h_d1"
+
+
+class NaiveLastWeek(NaiveBaseline):
+    name = "naive_last_week"
+    lag_column = "price_h_d7"
+
+
+BASELINES: tuple[NaiveBaseline, ...] = (NaiveYesterday(), NaiveLastWeek())
