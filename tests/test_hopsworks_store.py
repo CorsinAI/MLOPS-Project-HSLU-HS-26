@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 import pytest
+import requests
 from hopsworks_common.client.exceptions import RestAPIError
 
 from neghour import config
@@ -135,3 +136,84 @@ def test_a_client_error_is_not_retried() -> None:
     with pytest.raises(RestAPIError):
         hopsworks_store._insert(group, pd.DataFrame())
     assert group.inserts == 1
+
+
+class RaisingGroup:
+    """Raises each given exception in turn, then succeeds."""
+
+    def __init__(self, *errors: Exception) -> None:
+        self.errors = list(errors)
+        self.inserts = 0
+
+    def insert(self, rows: Any) -> None:
+        self.inserts += 1
+        if self.errors:
+            raise self.errors.pop(0)
+
+
+@pytest.mark.usefixtures("no_delay")
+@pytest.mark.parametrize(
+    "error",
+    [
+        # Run 42458850154: the connection dropped during the label write.
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.Timeout("Read timed out."),
+        # Run 44103070337: delta-rs failed to read the table during the write.
+        OSError("Kernel error -> Generic HdfsObjectStore error"),
+    ],
+)
+def test_a_dropped_connection_or_storage_error_is_retried(error: Exception) -> None:
+    group = RaisingGroup(error)
+    hopsworks_store._insert(group, pd.DataFrame())
+    assert group.inserts == 2
+
+
+@pytest.mark.usefixtures("no_delay")
+def test_a_lasting_connection_error_fails_the_run() -> None:
+    errors = [requests.exceptions.ConnectionError("down")] * 4
+    group = RaisingGroup(*errors)
+    with pytest.raises(requests.exceptions.ConnectionError):
+        hopsworks_store._insert(group, pd.DataFrame())
+    assert group.inserts == hopsworks_store.WRITE_ATTEMPTS
+
+
+@pytest.mark.usefixtures("no_delay")
+def test_a_programming_error_is_not_retried() -> None:
+    group = RaisingGroup(ValueError("bad frame"))
+    with pytest.raises(ValueError):
+        hopsworks_store._insert(group, pd.DataFrame())
+    assert group.inserts == 1
+
+
+@pytest.mark.usefixtures("no_delay")
+def test_a_server_error_at_login_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Run 45430760114: login got HTTP 503 from the version endpoint.
+    monkeypatch.setattr(config, "HOPSWORKS_HOST", "example.test")
+    attempts: list[int] = []
+
+    def flaky_login(**settings: Any) -> FakeProject:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RestAPIError("https://example.test", FakeResponse(503))
+        return FakeProject()
+
+    monkeypatch.setattr(hopsworks_store.hopsworks, "login", flaky_login)
+    HopsworksStore()
+    assert len(attempts) == 2
+
+
+@pytest.mark.usefixtures("no_delay")
+def test_a_rejected_api_key_at_login_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "HOPSWORKS_HOST", "example.test")
+    attempts: list[int] = []
+
+    def rejecting_login(**settings: Any) -> FakeProject:
+        attempts.append(1)
+        raise RestAPIError("https://example.test", FakeResponse(401))
+
+    monkeypatch.setattr(hopsworks_store.hopsworks, "login", rejecting_login)
+    with pytest.raises(RestAPIError):
+        HopsworksStore()
+    assert len(attempts) == 1
