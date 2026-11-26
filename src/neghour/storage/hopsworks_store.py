@@ -11,15 +11,19 @@ Groups are offline only. With `stream=False` and Delta, the client writes the
 table directly, so an insert starts no Spark job. Statistics are off because
 they would start one after every insert. See GROUP_SETTINGS.
 
-Writes retry on server errors. An upsert is idempotent, so repeating one after
-a failed metadata commit is safe. Client errors fail at once.
+Login and writes retry on transient failures: HTTP 5xx, a dropped connection
+or timeout, and storage I/O errors. All four failed scheduled runs before this
+change were of these kinds. An upsert is idempotent and a Delta commit is
+atomic, so repeating a failed write is safe. Client errors (HTTP 4xx) fail at
+once.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import hopsworks
 import pandas as pd
@@ -28,6 +32,8 @@ from hopsworks_common.client.exceptions import RestAPIError
 from neghour import config
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 KEY_COLUMN = "delivery_epoch"
 WRITE_ATTEMPTS = 3
@@ -59,25 +65,43 @@ def _with_key(rows: pd.DataFrame) -> pd.DataFrame:
     return keyed
 
 
-def _insert(group: Any, rows: pd.DataFrame) -> None:
-    """Insert rows, retrying when the server fails."""
+def _transient(error: Exception) -> bool:
+    """Return whether a failed Hopsworks call is worth repeating.
+
+    requests' ConnectionError and Timeout are OSErrors, like the delta-rs
+    storage error seen on 2026-11-17.
+    """
+    if isinstance(error, RestAPIError):
+        return error.response.status_code >= 500
+    return isinstance(error, OSError)
+
+
+def _with_retry(call: Callable[[], T], what: str) -> T:
+    """Run a Hopsworks call, repeating it on transient failures."""
     for attempt in range(1, WRITE_ATTEMPTS + 1):
         try:
-            group.insert(rows)
-            return
-        except RestAPIError as error:
-            status = error.response.status_code
-            if status < 500 or attempt == WRITE_ATTEMPTS:
+            return call()
+        except (RestAPIError, OSError) as error:
+            if not _transient(error) or attempt == WRITE_ATTEMPTS:
                 raise
-            logger.warning("Hopsworks write failed: HTTP %s, retrying", status)
+            logger.warning(
+                "Hopsworks %s failed (attempt %d of %d), retrying: %r",
+                what, attempt, WRITE_ATTEMPTS, error,
+            )
             time.sleep(WRITE_RETRY_DELAY_S)
+    raise AssertionError("unreachable")
+
+
+def _insert(group: Any, rows: pd.DataFrame) -> None:
+    """Insert rows, retrying on transient failures."""
+    _with_retry(lambda: group.insert(rows), "write")
 
 
 class HopsworksStore:
     """Stores features and labels in the configured Hopsworks project."""
 
     def __init__(self) -> None:
-        self._store = login().get_feature_store()
+        self._store = _with_retry(lambda: login().get_feature_store(), "login")
 
     def _group(self, name: str, version: int, description: str) -> Any:
         return self._store.get_or_create_feature_group(

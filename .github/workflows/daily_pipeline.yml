@@ -17,6 +17,8 @@ on:
 jobs:
   feature-pipeline:
     runs-on: ubuntu-latest
+    # A healthy run takes 6-15 minutes. Retries can add a few more.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
