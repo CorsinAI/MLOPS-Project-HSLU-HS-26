@@ -1,11 +1,14 @@
 """
 Hopsworks backend.
 
-Features and labels live in separate feature groups, because labels only exist
-after the auction while features use only data available by the cut-off. Each run
-rewrites its whole window of both from current source values. The primary key is
-`delivery_epoch`: the UTC delivery hour as integer seconds. `delivery_utc` is
-the event time.
+Features, labels and predictions live in separate feature groups, because
+labels only exist after the auction while features use only data available by
+the cut-off. Feature rows stop changing at gate closure (decision #45); labels
+are refreshed by every run. The primary key is `delivery_epoch`: the UTC
+delivery hour as integer seconds. `delivery_utc` is the event time.
+
+A read of a group that does not exist yet returns an empty frame, so the first
+run after a version change works.
 
 Groups are offline only. With `stream=False` and Delta, the client writes the
 table directly, so an insert starts no Spark job. Statistics are off because
@@ -127,14 +130,39 @@ class HopsworksStore:
             "Hourly day-ahead price and y_neg label per delivery hour",
         )
 
+    def _predictions_group(self) -> Any:
+        return self._group(
+            config.PREDICTION_GROUP_NAME,
+            config.PREDICTION_GROUP_VERSION,
+            "P(price < 0) and yes or no per delivery hour, with the time predicted",
+        )
+
+    def _read(self, name: str, version: int) -> pd.DataFrame:
+        """Return all rows of a group, or an empty frame if it does not exist."""
+        group = _with_retry(
+            lambda: self._store.get_feature_group(name, version=version), "read"
+        )
+        if group is None:
+            return pd.DataFrame()
+        rows = _with_retry(group.read, "read")
+        return rows.drop(columns=KEY_COLUMN)
+
     def upsert_features(self, features: pd.DataFrame) -> None:
         _insert(self._features_group(), _with_key(features))
 
     def upsert_labels(self, labels: pd.DataFrame) -> None:
         _insert(self._labels_group(), _with_key(labels))
 
+    def upsert_predictions(self, predictions: pd.DataFrame) -> None:
+        _insert(self._predictions_group(), _with_key(predictions))
+
     def read_features(self) -> pd.DataFrame:
-        return self._features_group().read().drop(columns=KEY_COLUMN)
+        return self._read(config.FEATURE_GROUP_NAME, config.FEATURE_GROUP_VERSION)
 
     def read_labels(self) -> pd.DataFrame:
-        return self._labels_group().read().drop(columns=KEY_COLUMN)
+        return self._read(config.LABEL_GROUP_NAME, config.LABEL_GROUP_VERSION)
+
+    def read_predictions(self) -> pd.DataFrame:
+        return self._read(
+            config.PREDICTION_GROUP_NAME, config.PREDICTION_GROUP_VERSION
+        )

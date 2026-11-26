@@ -2,8 +2,16 @@
 Feature pipeline: fetch sources, build rows, validate, upsert.
 
 The daily run rebuilds Berlin today - 7 days through Berlin tomorrow, so missed
-days repair themselves and labels of past days stay fresh. Rows are selected by
-timestamp, so a late run writes the same features as an on-time run.
+days repair themselves and labels of past days stay fresh. Feature values are
+selected by timestamp, so a late run computes the same features as an on-time run.
+
+Frozen rows (decision #45): the stored feature row for day D is the row as it
+stood at gate closure, 12:00 Berlin on D-1, when the forecast for D must be out.
+After that a stored row is never rewritten, complete or not, so training sees
+what serving saw. Only the decision whether to write depends on the clock, never
+the values. A row that was never stored can still be written later, for example
+by a backfill; its `fetched_at` after gate closure marks it as rebuilt, not live.
+Labels live in their own group and are still refreshed.
 
 Late or missing data: a source that still fails after retries gives NaN plus a
 `missing_*` flag, a warning and a step-summary line. Values are never carried
@@ -24,15 +32,16 @@ import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TypeVar
 
 import pandas as pd
 
+from neghour.config import BERLIN_TZ
 from neghour.features.build import NEGATIVE_WINDOW_DAYS, build_features, build_labels
 from neghour.features.validation import (
-    FEATURE_COLUMNS,
     LABEL_COLUMNS,
+    STORED_FEATURE_COLUMNS,
     validate_day_lengths,
     validate_no_leakage,
     validate_schema,
@@ -42,7 +51,7 @@ from neghour.sources import open_meteo, smard
 from neghour.sources.http import SourceUnavailableError
 from neghour.storage import get_store
 from neghour.storage.base import FeatureStore
-from neghour.timeutils import berlin_today, delivery_hours
+from neghour.timeutils import berlin_today, delivery_hours, gate_closure_utc
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +74,8 @@ class RunSummary:
     missing_actuals_rows: int
     duration_s: float
     failed_sources: tuple[str, ...] = ()
+    frozen_rows_kept: int = 0
+    started_at: datetime | None = None
 
 
 def daily_window(now: datetime | None = None) -> tuple[date, date]:
@@ -84,14 +95,40 @@ def without_complete_stored_rows(
     return features[~features["delivery_utc"].isin(hours)]
 
 
+def is_frozen(delivery_day: pd.Series, now: datetime) -> pd.Series:
+    """Return, per row, whether gate closure for its delivery day has passed."""
+    closure = {
+        day: gate_closure_utc(date.fromisoformat(str(day)))
+        for day in delivery_day.unique()
+    }
+    return delivery_day.map(closure) <= pd.Timestamp(now)
+
+
+def without_frozen_rows(
+    features: pd.DataFrame, stored: pd.DataFrame, now: datetime
+) -> pd.DataFrame:
+    """Drop rows that are stored already and whose gate closure has passed."""
+    if stored.empty or features.empty:
+        return features
+    stored_hours = pd.to_datetime(stored["delivery_utc"], utc=True)
+    already = features["delivery_utc"].isin(stored_hours)
+    return features[~(already & is_frozen(features["delivery_day"], now))]
+
+
 def run(
     first_day: date,
     last_day: date,
     store: FeatureStore | None = None,
     tolerate_missing: bool = False,
+    now: datetime | None = None,
 ) -> RunSummary:
-    """Build and store features and labels for the given delivery days."""
+    """Build and store features and labels for the given delivery days.
+
+    *now* is the run's wall-clock time. It only decides which stored rows are
+    frozen, and it is stored as `fetched_at`. Tests pass it explicitly.
+    """
     started = time.monotonic()
+    started_at = now if now is not None else datetime.now(UTC)
     target = store if store is not None else get_store()
     failed: list[str] = []
 
@@ -130,19 +167,23 @@ def run(
         raise SourceUnavailableError("SMARD and Open-Meteo are both unavailable")
 
     features = build_features(prices, weather, actuals, first_day, last_day)
+    features["fetched_at"] = pd.Timestamp(started_at).tz_convert("UTC")
     in_window = prices["delivery_utc"].isin(delivery_hours(first_day, last_day))
     labels = build_labels(prices[in_window], quarters)
 
-    validate_schema(features, FEATURE_COLUMNS)
+    validate_schema(features, STORED_FEATURE_COLUMNS)
     validate_schema(labels, LABEL_COLUMNS)
     validate_unique_hours(features)
     validate_unique_hours(labels)
     validate_day_lengths(features)
     validate_no_leakage(features)
 
+    stored = target.read_features()
     if failed:
         newest = features[features["delivery_day"] == last_day.isoformat()]
-        features = without_complete_stored_rows(newest, target.read_features())
+        features = without_complete_stored_rows(newest, stored)
+    built = len(features)
+    features = without_frozen_rows(features, stored, started_at)
     if "smard_quarters" in failed:
         labels = labels.head(0)
 
@@ -161,6 +202,8 @@ def run(
         missing_actuals_rows=int(features["missing_actuals"].sum()),
         duration_s=round(time.monotonic() - started, 1),
         failed_sources=tuple(failed),
+        frozen_rows_kept=built - len(features),
+        started_at=started_at,
     )
 
 
@@ -169,6 +212,10 @@ def write_step_summary(summary: RunSummary) -> None:
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if not path:
         return
+    started_utc = started_berlin = "unknown"
+    if summary.started_at is not None:
+        started_utc = f"{summary.started_at:%Y-%m-%d %H:%M}"
+        started_berlin = f"{summary.started_at.astimezone(BERLIN_TZ):%Y-%m-%d %H:%M}"
     lines = [
         "## Feature pipeline",
         "",
@@ -181,6 +228,9 @@ def write_step_summary(summary: RunSummary) -> None:
         f"| Rows with missing weather inputs | {summary.missing_weather_rows} |",
         f"| Rows with missing actuals | {summary.missing_actuals_rows} |",
         f"| Failed sources | {', '.join(summary.failed_sources) or 'none'} |",
+        f"| Frozen rows kept as stored | {summary.frozen_rows_kept} |",
+        f"| Started (UTC) | {started_utc} |",
+        f"| Started (Berlin) | {started_berlin} |",
         f"| Duration (s) | {summary.duration_s} |",
     ]
     with open(path, "a", encoding="utf-8") as handle:

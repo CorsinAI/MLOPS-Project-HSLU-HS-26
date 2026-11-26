@@ -16,6 +16,9 @@ load_dotenv()
 
 BERLIN_TZ = ZoneInfo("Europe/Berlin")
 CUTOFF_HOUR: int = int(os.getenv("CUTOFF_HOUR", "10"))  # 10:00 Berlin on D-1
+# The day-ahead auction closes at 12:00 Berlin on D-1. A forecast for D must be
+# out by then, and the stored feature row for D is frozen from then on.
+GATE_CLOSURE_HOUR = 12
 
 # SMARD (Bundesnetzagentur)
 SMARD_BASE_URL = "https://www.smard.de/app/chart_data"
@@ -79,7 +82,9 @@ HOPSWORKS_PROJECT: str = os.getenv("HOPSWORKS_PROJECT", "neghour")
 HOPSWORKS_API_KEY: str = os.getenv("HOPSWORKS_API_KEY", "")
 
 FEATURE_GROUP_NAME = "neghour_features"
-FEATURE_GROUP_VERSION = 1
+# Version 2 adds `fetched_at` and freezes rows at gate closure (decision #45).
+# Version 1 stays as it is, as the record of the old rewrite behaviour.
+FEATURE_GROUP_VERSION = 2
 LABEL_GROUP_NAME = "neghour_labels"
 LABEL_GROUP_VERSION = 1
 PREDICTION_GROUP_NAME = "neghour_predictions"

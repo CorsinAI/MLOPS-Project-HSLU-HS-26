@@ -217,3 +217,35 @@ def test_a_rejected_api_key_at_login_is_not_retried(
     with pytest.raises(RestAPIError):
         HopsworksStore()
     assert len(attempts) == 1
+
+
+class ReadableStore(FakeStore):
+    def __init__(self, groups: dict[tuple[str, int], pd.DataFrame]) -> None:
+        super().__init__()
+        self.groups = groups
+
+    def get_feature_group(self, name: str, version: int) -> Any:
+        rows = self.groups.get((name, version))
+        if rows is None:
+            return None
+        group = FakeStore()
+        group.read = lambda: rows  # type: ignore[attr-defined]
+        return group
+
+
+def store_with(groups: dict[tuple[str, int], pd.DataFrame]) -> HopsworksStore:
+    store = HopsworksStore.__new__(HopsworksStore)
+    store._store = ReadableStore(groups)
+    return store
+
+
+def test_reading_a_group_that_does_not_exist_gives_an_empty_frame() -> None:
+    store = store_with({})
+    assert store.read_features().empty
+    assert store.read_predictions().empty
+
+
+def test_reads_use_the_configured_version_and_drop_the_key() -> None:
+    rows = pd.DataFrame({"delivery_epoch": [0], "delivery_utc": [pd.Timestamp(0)]})
+    key = (config.FEATURE_GROUP_NAME, config.FEATURE_GROUP_VERSION)
+    assert list(store_with({key: rows}).read_features().columns) == ["delivery_utc"]
