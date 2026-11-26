@@ -1,5 +1,8 @@
 # NegativeHours
 
+[![Daily pipeline](https://github.com/CorsinAI/MLOPS-Project-HSLU-HS-26/actions/workflows/daily_pipeline.yml/badge.svg)](https://github.com/CorsinAI/MLOPS-Project-HSLU-HS-26/actions/workflows/daily_pipeline.yml)
+[![CI](https://github.com/CorsinAI/MLOPS-Project-HSLU-HS-26/actions/workflows/ci.yml/badge.svg)](https://github.com/CorsinAI/MLOPS-Project-HSLU-HS-26/actions/workflows/ci.yml)
+
 > Predict which hours of tomorrow will have a **negative day-ahead electricity
 > price** in the DE-LU market, from data known at 10:00 Europe/Berlin, two hours
 > before the auction gate closes.
