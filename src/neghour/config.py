@@ -98,6 +98,11 @@ DAGSHUB_TOKEN: str = os.getenv("DAGSHUB_TOKEN", "")
 MODEL_NAME = "neghour_lgbm"
 LOCAL_MODEL_DIR: str = os.getenv("LOCAL_MODEL_DIR", "artifacts/models")
 
-# Success criteria (proposal §1)
-TARGET_PR_AUC = 0.75
-TARGET_F1_MARGIN = 0.10  # LightGBM F1 must exceed best baseline by at least this
+# Proposal targets (proposal §1). Every training run reports against them.
+PROPOSAL_PR_AUC = 0.75
+PROPOSAL_F1_MARGIN = 0.10  # LightGBM F1 must exceed best baseline by this
+
+# Promotion gate: interim values until the model improves (decision #58, owner
+# decision). A model is registered, and served, only if it reaches both.
+TARGET_PR_AUC = 0.60
+TARGET_F1_MARGIN = 0.05

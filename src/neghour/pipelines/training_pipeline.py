@@ -19,10 +19,12 @@ Two modes:
             is not used for model selection.
   retrain   Rolling window (decision #37): the newest HOLDOUT_DAYS decide
             promotion, the VALIDATION_DAYS before them tune the model, and the
-            TRAIN_DAYS before those train it. Promotion needs PR-AUC >= 0.75
-            and F1 >= best baseline F1 + 0.10 on the holdout, and at least
-            MIN_HOLDOUT_POSITIVES negative hours there; otherwise the current
-            model stays.
+            TRAIN_DAYS before those train it. Validation and holdout grow back
+            by weeks until each holds 20 negative hours (decision #59).
+            Promotion needs PR-AUC >= TARGET_PR_AUC and F1 >= best baseline F1
+            + TARGET_F1_MARGIN on the holdout (interim values, decision #58),
+            and at least MIN_HOLDOUT_POSITIVES negative hours there; otherwise
+            the current model stays. Window lengths can be set per run.
 
 Triggered by: .github/workflows/weekly_training.yml (manual for now)
 Invoked via:  python -m neghour.pipelines.training_pipeline --mode retrain
@@ -68,6 +70,10 @@ TRAIN_DAYS = 364
 VALIDATION_DAYS = 56
 HOLDOUT_DAYS = 56
 MIN_HOLDOUT_POSITIVES = 20
+# Validation and holdout grow back by whole weeks until they hold this many
+# negative hours, up to MAX_WINDOW_DAYS (decision #59).
+MIN_WINDOW_POSITIVES = 20
+MAX_WINDOW_DAYS = 182
 
 # A segment with fewer negative hours is reported, but not scored.
 MIN_SEGMENT_POSITIVES = 10
@@ -132,12 +138,40 @@ def out_of_time_split(data: pd.DataFrame) -> dict[str, pd.DataFrame]:
     }
 
 
-def rolling_split(data: pd.DataFrame) -> dict[str, pd.DataFrame]:
+def _start_with_enough_positives(
+    daily_positives: pd.Series, end: date, days: int
+) -> date:
+    """Return the start of a window ending at *end* (exclusive).
+
+    The window is *days* long, and grows back a week at a time, up to
+    MAX_WINDOW_DAYS, until it holds MIN_WINDOW_POSITIVES negative hours.
+    In winter a short recent window has almost none (decision #59).
+    """
+    start = end - timedelta(days=days)
+    while (end - start).days < MAX_WINDOW_DAYS:
+        inside = (daily_positives.index >= start.isoformat()) & (
+            daily_positives.index < end.isoformat()
+        )
+        if daily_positives[inside].sum() >= MIN_WINDOW_POSITIVES:
+            break
+        start -= timedelta(days=7)
+    return start
+
+
+def rolling_split(
+    data: pd.DataFrame,
+    train_days: int = TRAIN_DAYS,
+    validation_days: int = VALIDATION_DAYS,
+    holdout_days: int = HOLDOUT_DAYS,
+) -> dict[str, pd.DataFrame]:
     """Split the newest labelled days into train, validation and holdout."""
+    daily_positives = data.groupby("delivery_day")["y_neg"].sum()
     end = date.fromisoformat(data["delivery_day"].max()) + timedelta(days=1)
-    holdout_start = end - timedelta(days=HOLDOUT_DAYS)
-    validation_start = holdout_start - timedelta(days=VALIDATION_DAYS)
-    train_start = validation_start - timedelta(days=TRAIN_DAYS)
+    holdout_start = _start_with_enough_positives(daily_positives, end, holdout_days)
+    validation_start = _start_with_enough_positives(
+        daily_positives, holdout_start, validation_days
+    )
+    train_start = validation_start - timedelta(days=train_days)
     iso = date.isoformat
     return {
         "train": _days(data, iso(train_start), iso(validation_start)),
@@ -277,12 +311,20 @@ def run(
     registry: ModelRegistry | None = None,
     tracker: Tracker | None = None,
     params: dict[str, object] | None = None,
+    windows: dict[str, int] | None = None,
 ) -> TrainingResult:
-    """Train, score and, in retrain mode, promote. *registry* None = no promotion."""
+    """Train, score and, in retrain mode, promote. *registry* None = no promotion.
+
+    *windows* overrides the rolling window lengths in days, with the keys
+    train_days, validation_days and holdout_days.
+    """
     if mode not in ("retrain", "evaluate"):
         raise ValueError(f"Unknown mode: {mode}")
     data = load_dataset(store if store is not None else get_store())
-    parts = rolling_split(data) if mode == "retrain" else out_of_time_split(data)
+    if mode == "retrain":
+        parts = rolling_split(data, **(windows or {}))
+    else:
+        parts = out_of_time_split(data)
     score_part = "holdout" if mode == "retrain" else "test"
     for name, rows in parts.items():
         if rows.empty:
@@ -403,12 +445,26 @@ def summary_lines(result: TrainingResult) -> list[str]:
         f"{extra['observed_rate']:.3f}; Brier score {extra['brier']:.4f}.",
         "",
         f"Promotion: {'yes' if result.promoted else 'no'}, {result.reason}.",
+        proposal_line(result.metrics, part),
     ]
     if result.model_version is not None:
         lines.append(
             f"Registered as {config.MODEL_NAME} version {result.model_version}."
         )
     return lines
+
+
+def proposal_line(metrics: dict[str, dict[str, float]], part: str) -> str:
+    """Say whether the proposal targets are met, whatever the promotion gate."""
+    lgbm = metrics[f"{part}/lgbm"]
+    best = max(metrics[f"{part}/{b.name}"]["f1"] for b in BASELINES)
+    pr_ok = lgbm["pr_auc"] >= config.PROPOSAL_PR_AUC
+    f1_ok = lgbm["f1"] >= best + config.PROPOSAL_F1_MARGIN
+    return (
+        f"Proposal targets: PR-AUC >= {config.PROPOSAL_PR_AUC} "
+        f"{'met' if pr_ok else 'missed'}, F1 >= best baseline + "
+        f"{config.PROPOSAL_F1_MARGIN} {'met' if f1_ok else 'missed'}."
+    )
 
 
 def write_step_summary(result: TrainingResult) -> None:
@@ -432,11 +488,19 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="read stored data and report, but log nothing and register nothing",
     )
+    parser.add_argument("--train-days", type=int, default=TRAIN_DAYS)
+    parser.add_argument("--validation-days", type=int, default=VALIDATION_DAYS)
+    parser.add_argument("--holdout-days", type=int, default=HOLDOUT_DAYS)
     args = parser.parse_args(argv)
 
     registry = None if args.dry_run else get_registry()
     tracker: Tracker = NullTracker() if args.dry_run else MlflowTracker()
-    result = run(args.mode, registry=registry, tracker=tracker)
+    windows = {
+        "train_days": args.train_days,
+        "validation_days": args.validation_days,
+        "holdout_days": args.holdout_days,
+    }
+    result = run(args.mode, registry=registry, tracker=tracker, windows=windows)
     print("\n".join(summary_lines(result)))
     with pd.option_context("display.width", 200, "display.max_columns", 30):
         print(result.segments.round(3).to_string(index=False))

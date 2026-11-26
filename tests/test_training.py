@@ -171,8 +171,8 @@ def metrics(pr_auc: float, f1: float, best_baseline: float, positives: int) -> d
     [
         ((0.80, 0.70, 0.50, 100), True, "meet the criteria"),
         ((0.80, 0.70, 0.50, 5), False, "only 5 negative hours"),
-        ((0.70, 0.70, 0.50, 100), False, "PR-AUC 0.700 < 0.75"),
-        ((0.80, 0.55, 0.50, 100), False, "F1 0.550 < best baseline 0.500"),
+        ((0.55, 0.70, 0.50, 100), False, "PR-AUC 0.550 < 0.6"),
+        ((0.80, 0.53, 0.50, 100), False, "F1 0.530 < best baseline 0.500"),
     ],
 )
 def test_promotion_criteria(values: tuple, promoted: bool, reason: str) -> None:
@@ -195,3 +195,37 @@ def test_the_mlflow_tracker_logs_metrics_and_tables(
     run = mlflow.get_run(run_id)
     assert run.data.metrics == {"holdout/lgbm/f1": 0.7}
     assert run.data.params == {"mode": "retrain"}
+
+
+def quiet_recent_store() -> MemoryStore:
+    """Two years of data whose last 100 days have no negative hour."""
+    store = synthetic_store(date(2024, 3, 1), date(2026, 3, 1), seed=4)
+    labels = store.read_labels()
+    quiet = labels["delivery_utc"] >= pd.Timestamp("2025-11-22", tz="UTC")
+    labels.loc[quiet, "y_neg"] = 0
+    store.upsert_labels(labels)
+    return store
+
+
+def test_a_quiet_holdout_grows_back_until_it_has_enough_negative_hours() -> None:
+    parts = tp.rolling_split(tp.load_dataset(quiet_recent_store()))
+    holdout = parts["holdout"]
+    assert holdout["y_neg"].sum() >= tp.MIN_WINDOW_POSITIVES
+    assert holdout["delivery_day"].nunique() > tp.HOLDOUT_DAYS
+    assert holdout["delivery_day"].nunique() % 7 == tp.HOLDOUT_DAYS % 7
+    assert parts["validation"]["y_neg"].sum() >= tp.MIN_WINDOW_POSITIVES
+    assert parts["train"]["delivery_day"].max() < parts["validation"][
+        "delivery_day"].min()
+
+
+def test_window_lengths_can_be_set_per_run(store: MemoryStore) -> None:
+    parts = tp.rolling_split(tp.load_dataset(store), train_days=180,
+                             validation_days=28, holdout_days=28)
+    assert parts["train"]["delivery_day"].nunique() == 180
+    assert parts["holdout"]["delivery_day"].nunique() == 28
+
+
+def test_the_summary_reports_the_proposal_targets(retrained) -> None:
+    result, _ = retrained
+    line = tp.proposal_line(result.metrics, "holdout")
+    assert line.startswith("Proposal targets: PR-AUC >= 0.75")
