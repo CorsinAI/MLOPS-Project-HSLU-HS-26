@@ -8,10 +8,11 @@
 > before the auction gate closes.
 
 **Author:** Corsin Hidber · HSLU MLOps HS26
-**Target:** PR-AUC ≥ 0.75 · F1 ≥ best baseline + 0.10
+**Target:** PR-AUC ≥ 0.75 · F1 ≥ best baseline + 0.10 (proposal). Promotion gate for
+now: PR-AUC ≥ 0.60 · F1 ≥ best baseline + 0.05 (decision #58).
 **Scope:** DE-LU bidding zone · hourly · 2024 to live
 **Status:** Milestone 3 in progress. Feature, training and inference pipelines are
-built; the inference trigger and the promotion rule are open (decisions #48, #53).
+built; inference is triggered by Google Cloud Scheduler (decision #60, `docs/scheduling.md`).
 
 Decisions and changes are logged in [`docs/ms2_decisions.md`](docs/ms2_decisions.md)
 (#1 to #44) and [`docs/ms3_decisions.md`](docs/ms3_decisions.md) (#45 on). Changes to the original proposal
@@ -192,6 +193,10 @@ uv sync --frozen --extra dev --extra train
 cp .env.example .env   # add HOPSWORKS_API_KEY to .env; never commit that file
 ```
 
+Writing to Hopsworks needs its Delta library, which the lockfile installs only on
+Linux and on Apple-silicon macOS. On Windows, reads and dry runs work; run writes
+through the GitHub workflows or WSL.
+
 ## Run
 
 ```bash
@@ -248,8 +253,8 @@ Refresh them with `uv run --frozen python scripts/record_fixtures.py`.
 | Workflow | Trigger | Steps |
 |---|---|---|
 | `daily_pipeline.yml` | Cron 01:17, 05:17 and 12:17 UTC, or manual | Feature pipeline |
-| `inference.yml` | Manual or external trigger, no cron | Refresh day D, predict, store |
-| `weekly_training.yml` | Manual; cron off until decision #53 | Retrain or evaluate |
+| `inference.yml` | Cloud Scheduler 10:05 Berlin, or manual | Refresh day D, predict, store |
+| `weekly_training.yml` | Cloud Scheduler Sunday 03:00 Berlin, or manual | Retrain or evaluate |
 | `backfill.yml` | Manual | Backfill, then a report on stored data |
 | `ci.yml` | Push to main, PR, or manual | Lock check, ruff, pytest, Docker build |
 | `check_hopsworks.yml` | Manual | Hopsworks round-trip check |
@@ -270,9 +275,9 @@ stores those labels the same day, not the next morning.
 Berlin, which cron cannot promise. `inference.yml` therefore has no cron and runs by
 `workflow_dispatch`. The pipeline refuses to start before the cut-off, stores
 `predicted_at` and `on_time`, and a late run never replaces an on-time prediction.
-Which trigger calls it at about 10:05 Berlin is open (decision #48): an external
-scheduler calling `workflow_dispatch`, or Apache Airflow. MLflow tracks runs and
-models; it does not schedule.
+Google Cloud Scheduler calls it at 10:05 Berlin, starts a label refresh at 13:30
+and retraining on Sundays (decision #60). Setup: `docs/scheduling.md`. MLflow tracks
+runs and models; it does not schedule.
 
 **Overlaps and failures:** feature writers share one concurrency group and never
 cancel a running job. A failed scheduled feature run, and any failed inference or

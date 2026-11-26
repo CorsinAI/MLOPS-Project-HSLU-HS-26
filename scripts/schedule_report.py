@@ -26,9 +26,9 @@ from neghour.config import BERLIN_TZ, CUTOFF_HOUR, GATE_CLOSURE_HOUR
 FIELDS = "databaseId,createdAt,startedAt,conclusion,event"
 
 
-def fetch_runs(workflow: str, limit: int) -> list[dict]:
+def fetch_runs(workflow: str, limit: int, event: str) -> list[dict]:
     output = subprocess.run(
-        ["gh", "run", "list", "--workflow", workflow, "--event", "schedule",
+        ["gh", "run", "list", "--workflow", workflow, "--event", event,
          "--limit", str(limit), "--json", FIELDS],
         check=True, capture_output=True, text=True,
     ).stdout
@@ -79,13 +79,17 @@ def main() -> None:
     parser.add_argument("--workflow", default="daily_pipeline.yml")
     parser.add_argument("--limit", type=int, default=300)
     parser.add_argument("--input", type=Path)
+    parser.add_argument(
+        "--event", default="schedule",
+        help="schedule for GitHub cron, workflow_dispatch for Cloud Scheduler",
+    )
     args = parser.parse_args()
 
     if args.input:
         runs = json.loads(args.input.read_text("utf-8"))
     else:
-        runs = fetch_runs(args.workflow, args.limit)
-    runs = [r for r in runs if r.get("event", "schedule") == "schedule"]
+        runs = fetch_runs(args.workflow, args.limit, args.event)
+    runs = [r for r in runs if r.get("event", args.event) == args.event]
     table = start_table(runs)
     print("\n".join(report(table)))
 

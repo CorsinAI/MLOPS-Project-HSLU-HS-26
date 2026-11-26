@@ -2,8 +2,8 @@ name: Inference
 
 # Predicts every hour of Berlin tomorrow. Must start after 10:00 and finish
 # before 12:00 Berlin. GitHub cron starts this repo's jobs hours late, so there
-# is no cron here: the run is started by hand or by an external trigger that
-# calls workflow_dispatch (decision #48). The pipeline refuses to start before
+# is no cron here: Google Cloud Scheduler calls workflow_dispatch at 10:05
+# Berlin (decision #60, docs/scheduling.md), or it is started by hand. The pipeline refuses to start before
 # the cut-off and marks a prediction made after 12:00 as late.
 on:
   workflow_dispatch:

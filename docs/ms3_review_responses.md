@@ -32,10 +32,12 @@ Measured from the GitHub run history: of 83 scheduled runs (2026-10-02 to
 by `workflow_dispatch`, refuses to start before the cut-off, stores
 `predicted_at` and `on_time`, and a late run never replaces an on-time
 prediction. The feature step summary logs each run's real start time.
-Not decided: the trigger that calls inference at about 10:05 Berlin.
-Status: Partly. Commits 9125671, cc0da98. Files: `scripts/schedule_report.py`,
-`src/neghour/pipelines/inference_pipeline.py`, `.github/workflows/inference.yml`,
-decisions #47, #48.
+Scheduler chosen: Google Cloud Scheduler calls inference at 10:05 Berlin, the
+label refresh at 13:30 and retraining on Sundays (decision #60). It still has
+to be set up in Google Cloud (`docs/scheduling.md`).
+Status: Partly, Changed once the jobs run. Commits 9125671, cc0da98. Files:
+`scripts/schedule_report.py`, `src/neghour/pipelines/inference_pipeline.py`,
+`.github/workflows/inference.yml`, `docs/scheduling.md`, decisions #47, #48, #60.
 
 **E8 · Seasonality (MS1 E2).** Training reports PR-AUC and recall per season,
 day and night, weekday and weekend, for LightGBM and both baselines, plus a

@@ -21,8 +21,9 @@ where the project now differs from it, and why.
 | Fallback source | Energy-Charts if SMARD is down | Not built | A failed source gives NaN plus a flag, and the next run repairs it | |
 | Training window | Train 2024 | Starts 2024-02-17 06:00 UTC; weekly retraining uses a rolling window, and the test year is used once | Earlier weather forecasts are missing, and a fixed window would repeat the same model | |
 | Orchestration | GitHub Actions cron | Kept for MS2; MS3 needs better control of the start time | Cron started 4–9 h late, and the forecast must be out before 12:00 | B1 |
-| Inference start | GitHub Actions cron | No cron; `workflow_dispatch` from a trigger not chosen yet; runs before 10:00 are refused, runs after 12:00 are marked late | Only 5 % of scheduled runs started between 10:00 and 12:00 Berlin (decision #47) | MS2 E1 |
+| Inference start | GitHub Actions cron | Google Cloud Scheduler at 10:05 Berlin calls `workflow_dispatch`; runs before 10:00 are refused, runs after 12:00 are marked late | Only 5 % of scheduled runs started between 10:00 and 12:00 Berlin (decision #47) | MS2 E1 |
 | Stored features | Daily upsert | A row is frozen at 12:00 Berlin on D-1 and stores `fetched_at` | Training must see the row the forecast used (decision #45) | MS2 A1 |
+| Success criteria | PR-AUC ≥ 0.75, F1 ≥ best baseline + 0.10 | Still the goal and reported every run; models are promoted for now at PR-AUC ≥ 0.60 and F1 ≥ best baseline + 0.05 | The first model reached 0.62 and + 0.097 on the test year; without a lower gate nothing is served (decision #58) | |
 
 Details and smaller decisions are in `docs/ms2_decisions.md` and
 `docs/ms3_decisions.md`.

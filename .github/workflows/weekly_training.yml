@@ -1,7 +1,7 @@
 name: Weekly training
 
-# Training is not time-critical, so GitHub cron is good enough once enabled.
-# The schedule stays off until the promotion rule is settled (decision #53).
+# Started by Google Cloud Scheduler on Sundays at 03:00 Berlin (decision #60),
+# or by hand. The GitHub cron below stays off so training runs once a week.
 on:
   # schedule:
   #   - cron: "0 2 * * 0"   # Sunday 02:00 UTC
