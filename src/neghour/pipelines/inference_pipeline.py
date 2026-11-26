@@ -19,7 +19,7 @@ delivery_utc (README, "Monitoring plan").
 
 The time-critical part is the start: the run must start after 10:00 and finish
 before 12:00 Berlin. GitHub cron cannot promise that, so this module only
-offers an entry point; the trigger is chosen separately (decision #47).
+offers an entry point; the trigger is chosen separately (decision #48).
 
 Triggered by: .github/workflows/inference.yml (manual or external trigger)
 Invoked via:  python -m neghour.pipelines.inference_pipeline [--date YYYY-MM-DD]

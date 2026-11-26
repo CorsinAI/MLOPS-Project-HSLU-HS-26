@@ -1,7 +1,7 @@
 name: Weekly training
 
 # Training is not time-critical, so GitHub cron is good enough once enabled.
-# The schedule stays off until the promotion rule is settled (decision #48).
+# The schedule stays off until the promotion rule is settled (decision #53).
 on:
   # schedule:
   #   - cron: "0 2 * * 0"   # Sunday 02:00 UTC

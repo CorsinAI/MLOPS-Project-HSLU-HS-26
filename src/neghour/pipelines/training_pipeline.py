@@ -63,7 +63,7 @@ OOT_VALIDATION_START = "2025-01-01"
 OOT_TEST_START = "2025-07-01"
 OOT_TEST_END = "2026-07-01"
 
-# Rolling window (decision #46). Whole weeks keep the weekday mix even.
+# Rolling window (decision #49). Whole weeks keep the weekday mix even.
 TRAIN_DAYS = 364
 VALIDATION_DAYS = 56
 HOLDOUT_DAYS = 56
