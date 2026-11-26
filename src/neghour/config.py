@@ -16,6 +16,9 @@ load_dotenv()
 
 BERLIN_TZ = ZoneInfo("Europe/Berlin")
 CUTOFF_HOUR: int = int(os.getenv("CUTOFF_HOUR", "10"))  # 10:00 Berlin on D-1
+# The day-ahead auction closes at 12:00 Berlin on D-1. A forecast for D must be
+# out by then, and the stored feature row for D is frozen from then on.
+GATE_CLOSURE_HOUR = 12
 
 # SMARD (Bundesnetzagentur)
 SMARD_BASE_URL = "https://www.smard.de/app/chart_data"
@@ -79,7 +82,9 @@ HOPSWORKS_PROJECT: str = os.getenv("HOPSWORKS_PROJECT", "neghour")
 HOPSWORKS_API_KEY: str = os.getenv("HOPSWORKS_API_KEY", "")
 
 FEATURE_GROUP_NAME = "neghour_features"
-FEATURE_GROUP_VERSION = 1
+# Version 2 adds `fetched_at` and freezes rows at gate closure (decision #45).
+# Version 1 stays as it is, as the record of the old rewrite behaviour.
+FEATURE_GROUP_VERSION = 2
 LABEL_GROUP_NAME = "neghour_labels"
 LABEL_GROUP_VERSION = 1
 PREDICTION_GROUP_NAME = "neghour_predictions"
@@ -89,9 +94,15 @@ PREDICTION_GROUP_VERSION = 1
 DAGSHUB_REPO: str = os.getenv("DAGSHUB_REPO", "CorsinAI/MLOPS-Project-HSLU-HS-26")
 DAGSHUB_TOKEN: str = os.getenv("DAGSHUB_TOKEN", "")
 
-# Model registry
+# Model registry. With STORAGE_BACKEND=memory, models go to this local folder.
 MODEL_NAME = "neghour_lgbm"
+LOCAL_MODEL_DIR: str = os.getenv("LOCAL_MODEL_DIR", "artifacts/models")
 
-# Success criteria (proposal §1)
-TARGET_PR_AUC = 0.75
-TARGET_F1_MARGIN = 0.10  # LightGBM F1 must exceed best baseline by at least this
+# Proposal targets (proposal §1). Every training run reports against them.
+PROPOSAL_PR_AUC = 0.75
+PROPOSAL_F1_MARGIN = 0.10  # LightGBM F1 must exceed best baseline by this
+
+# Promotion gate: interim values until the model improves (decision #58, owner
+# decision). A model is registered, and served, only if it reaches both.
+TARGET_PR_AUC = 0.60
+TARGET_F1_MARGIN = 0.05

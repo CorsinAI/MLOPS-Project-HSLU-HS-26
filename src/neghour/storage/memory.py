@@ -6,11 +6,12 @@ import pandas as pd
 
 
 class MemoryStore:
-    """Keeps features and labels in data frames keyed by delivery_utc."""
+    """Keeps features, labels and predictions in frames keyed by delivery_utc."""
 
     def __init__(self) -> None:
         self._features = pd.DataFrame()
         self._labels = pd.DataFrame()
+        self._predictions = pd.DataFrame()
 
     @staticmethod
     def _upsert(current: pd.DataFrame, rows: pd.DataFrame) -> pd.DataFrame:
@@ -32,3 +33,9 @@ class MemoryStore:
 
     def read_labels(self) -> pd.DataFrame:
         return self._labels.copy()
+
+    def upsert_predictions(self, predictions: pd.DataFrame) -> None:
+        self._predictions = self._upsert(self._predictions, predictions)
+
+    def read_predictions(self) -> pd.DataFrame:
+        return self._predictions.copy()

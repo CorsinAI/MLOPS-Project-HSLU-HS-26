@@ -11,6 +11,10 @@ on:
         description: Last delivery day (YYYY-MM-DD); leave empty for tomorrow
         required: false
 
+concurrency:
+  group: feature-writes
+  cancel-in-progress: false
+
 jobs:
   backfill:
     runs-on: ubuntu-latest

@@ -71,7 +71,8 @@ def test_model_features_are_stored_features_without_bookkeeping() -> None:
     assert set(MODEL_FEATURES) <= set(FEATURE_COLUMNS)
     for column in MODEL_FEATURES:
         assert not column.startswith(("available_at", "missing_"))
-        assert column not in {"delivery_utc", "delivery_day", "cutoff_utc"}
+        bookkeeping = {"delivery_utc", "delivery_day", "cutoff_utc", "fetched_at"}
+        assert column not in bookkeeping
 
 
 def test_the_synthetic_label_is_rare() -> None:

@@ -177,3 +177,97 @@ def test_strict_run_stops_on_an_outage(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(SourceUnavailableError):
         feature_pipeline.run(FIRST_DAY, LAST_DAY, store)
     assert store.read_features().empty
+
+
+# Frozen rows (decision #45): a stored row stops changing at gate closure.
+
+TOMORROW = date(2026, 1, 16)
+BEFORE_GATE = datetime(2026, 1, 15, 9, 30, tzinfo=UTC)  # 10:30 Berlin on D-1
+AFTER_GATE = datetime(2026, 1, 15, 11, 30, tzinfo=UTC)  # 12:30 Berlin on D-1
+
+
+def test_gate_closure_is_noon_berlin_on_the_day_before() -> None:
+    from neghour.timeutils import gate_closure_utc
+
+    assert gate_closure_utc(date(2026, 1, 16)) == pd.Timestamp("2026-01-15 11:00Z")
+    assert gate_closure_utc(date(2026, 7, 16)) == pd.Timestamp("2026-07-15 10:00Z")
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_rows_store_when_their_sources_were_fetched() -> None:
+    store = MemoryStore()
+    feature_pipeline.run(TOMORROW, TOMORROW, store, now=BEFORE_GATE)
+    fetched = pd.to_datetime(store.read_features()["fetched_at"], utc=True)
+    assert (fetched == pd.Timestamp(BEFORE_GATE)).all()
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_a_row_is_rewritten_until_gate_closure(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = MemoryStore()
+    early = BEFORE_GATE - timedelta(hours=7)
+    feature_pipeline.run(TOMORROW, TOMORROW, store, now=early)
+
+    monkeypatch.setattr(
+        open_meteo,
+        "fetch_weather",
+        lambda a, b: weather_frame(a, b).assign(wind_100m=9.0),
+    )
+    summary = feature_pipeline.run(TOMORROW, TOMORROW, store, now=BEFORE_GATE)
+
+    stored = store.read_features()
+    assert summary.feature_rows == 24 and summary.frozen_rows_kept == 0
+    assert (stored["wind_100m"] == 9.0).all()
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_a_stored_row_never_changes_after_gate_closure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = MemoryStore()
+    feature_pipeline.run(TOMORROW, TOMORROW, store, now=BEFORE_GATE)
+    before = store.read_features()
+
+    monkeypatch.setattr(
+        open_meteo,
+        "fetch_weather",
+        lambda a, b: weather_frame(a, b).assign(wind_100m=9.0),
+    )
+    summary = feature_pipeline.run(TOMORROW, TOMORROW, store, now=AFTER_GATE)
+
+    assert summary.feature_rows == 0 and summary.frozen_rows_kept == 24
+    pd.testing.assert_frame_equal(store.read_features(), before)
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_an_incomplete_frozen_row_is_not_repaired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = MemoryStore()
+    monkeypatch.setattr(open_meteo, "fetch_weather", fail)
+    feature_pipeline.run(
+        TOMORROW, TOMORROW, store, tolerate_missing=True, now=BEFORE_GATE
+    )
+    assert store.read_features()["missing_weather"].all()
+
+    monkeypatch.setattr(open_meteo, "fetch_weather", weather_frame)
+    feature_pipeline.run(TOMORROW, TOMORROW, store, now=AFTER_GATE)
+    assert store.read_features()["missing_weather"].all()
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_a_day_never_stored_is_still_written_after_gate_closure() -> None:
+    store = MemoryStore()
+    summary = feature_pipeline.run(FIRST_DAY, LAST_DAY, store, now=AFTER_GATE)
+    assert summary.feature_rows == 24 * 8
+    fetched = pd.to_datetime(store.read_features()["fetched_at"], utc=True)
+    assert (fetched == pd.Timestamp(AFTER_GATE)).all()
+
+
+@pytest.mark.usefixtures("fake_prices")
+def test_labels_are_still_refreshed_after_gate_closure() -> None:
+    store = MemoryStore()
+    feature_pipeline.run(FIRST_DAY, LAST_DAY, store, now=AFTER_GATE)
+    store.upsert_labels(store.read_labels().assign(price_eur_mwh=0.0))
+    summary = feature_pipeline.run(FIRST_DAY, LAST_DAY, store, now=AFTER_GATE)
+    assert summary.label_rows == 24 * 8
+    assert (store.read_labels()["price_eur_mwh"] == 50.0).all()

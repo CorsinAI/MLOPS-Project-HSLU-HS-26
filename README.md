@@ -1,16 +1,21 @@
 # NegativeHours
 
+[![Daily pipeline](https://github.com/CorsinAI/MLOPS-Project-HSLU-HS-26/actions/workflows/daily_pipeline.yml/badge.svg)](https://github.com/CorsinAI/MLOPS-Project-HSLU-HS-26/actions/workflows/daily_pipeline.yml)
+[![CI](https://github.com/CorsinAI/MLOPS-Project-HSLU-HS-26/actions/workflows/ci.yml/badge.svg)](https://github.com/CorsinAI/MLOPS-Project-HSLU-HS-26/actions/workflows/ci.yml)
+
 > Predict which hours of tomorrow will have a **negative day-ahead electricity
 > price** in the DE-LU market, from data known at 10:00 Europe/Berlin, two hours
 > before the auction gate closes.
 
 **Author:** Corsin Hidber · HSLU MLOps HS26
-**Target:** PR-AUC ≥ 0.75 · F1 ≥ best baseline + 0.10
+**Target:** PR-AUC ≥ 0.75 · F1 ≥ best baseline + 0.10 (proposal). Promotion gate for
+now: PR-AUC ≥ 0.60 · F1 ≥ best baseline + 0.05 (decision #58).
 **Scope:** DE-LU bidding zone · hourly · 2024 to live
-**Status:** Milestone 2, feature pipeline. Training and inference are not built yet.
+**Status:** Milestone 3 in progress. Feature, training and inference pipelines are
+built; inference is triggered by Google Cloud Scheduler (decision #60, `docs/scheduling.md`).
 
-Decisions and changes during MS2 are logged in
-[`docs/ms2_decisions.md`](docs/ms2_decisions.md). Changes to the original proposal
+Decisions and changes are logged in [`docs/ms2_decisions.md`](docs/ms2_decisions.md)
+(#1 to #44) and [`docs/ms3_decisions.md`](docs/ms3_decisions.md) (#45 on). Changes to the original proposal
 are in [`docs/proposal_addendum.md`](docs/proposal_addendum.md).
 
 **Originality:** this is rare-event classification of negative hours for DE-LU;
@@ -45,8 +50,16 @@ flowchart TD
     S2[Open-Meteo Previous Runs<br/>4 points, day-2 forecasts] --> FP
     S3[Calendar and holidays] --> FP
     FP[Feature pipeline<br/>fetch, build as of cut-off, validate, upsert] --> FS
-    FS[(Hopsworks<br/>neghour_features, neghour_labels)]
-    GH[GitHub Actions<br/>daily cron and manual backfill] --> FP
+    FS[(Hopsworks feature store<br/>features, labels, predictions)]
+    FS --> TP[Training pipeline<br/>fit, score against baselines, promote]
+    TP --> MR[(Hopsworks Model Registry)]
+    TP --> ML[MLflow on DagsHub<br/>runs and metrics]
+    MR --> IP[Inference pipeline<br/>refresh day D, predict, store]
+    FS --> IP
+    IP --> FS
+    GH[GitHub Actions<br/>daily cron, backfill, manual training] --> FP
+    GH --> TP
+    TR[Trigger at about 10:05 Berlin<br/>not chosen yet] --> IP
 ```
 
 Live runs and backfills use the same code. The only difference is the date range.
@@ -138,10 +151,16 @@ serving, which is training-serving skew.
   a warning, and a line in the GitHub step summary.
 - Values are never carried forward. A copied forecast or price would be invented
   data that looks real.
+- A stored feature row for day D is frozen at gate closure, 12:00 Berlin on D-1,
+  and is never rewritten after that, complete or not (decision #45). Training
+  therefore sees the row the forecast used. A day that was never stored can still
+  be written later; its `fetched_at` after gate closure marks it as rebuilt.
+  Labels are refreshed by every run.
 - During an outage the daily run writes only the newest delivery day, and never over
   a complete stored row. Labels are skipped if quarter counts are missing. The next
   run repairs what is missing.
-- Hopsworks writes retry on server errors, because upserts are safe to repeat.
+- Hopsworks login, reads and writes retry on server errors, dropped connections and
+  storage I/O errors, because upserts are safe to repeat.
 - The run fails if validation or storage fails, or if SMARD and Open-Meteo are both
   down. A backfill fails when a source is down.
 
@@ -150,11 +169,11 @@ Solar, cloud and temperature forecasts begin on 2024-01-20 12:00 UTC, and 100 m 
 on 2024-02-17 06:00 UTC. Earlier hours stay as NaN with `missing_weather` set, and
 MS3 training drops them.
 
-**Known limitations:** SMARD actuals may be revised after first publication, which
-would make backfilled rows slightly cleaner than live ones. This has not been measured.
-Each run also rewrites its whole window from current source values, and `available_at`
-comes from rules. The leakage checks therefore prove the rules were followed, not when
-data really arrived.
+**Known limitations:** SMARD actuals may be revised after first publication, so
+backfilled rows can be slightly cleaner than live ones. Measured on 1,177 stored hours
+(2026-10-01 to 2026-11-18): 1 hour differs from a fresh reload (decision #46).
+`available_at` comes from rules, so the leakage checks prove the rules were followed;
+`fetched_at` records when a row's data was really downloaded.
 
 ## Data sources and licences
 
@@ -174,6 +193,10 @@ uv sync --frozen --extra dev --extra train
 cp .env.example .env   # add HOPSWORKS_API_KEY to .env; never commit that file
 ```
 
+Writing to Hopsworks needs its Delta library, which the lockfile installs only on
+Linux and on Apple-silicon macOS. On Windows, reads and dry runs work; run writes
+through the GitHub workflows or WSL.
+
 ## Run
 
 ```bash
@@ -189,9 +212,21 @@ STORAGE_BACKEND=memory uv run --frozen python -m neghour.pipelines.feature_pipel
 
 # Report on what is stored
 uv run --frozen python scripts/check_store_quality.py
+
+# Training (needs the train extra). evaluate = test year, never registers
+uv run --frozen python -m neghour.pipelines.training_pipeline --mode retrain
+uv run --frozen python -m neghour.pipelines.training_pipeline --mode evaluate --dry-run
+
+# Inference for Berlin tomorrow; refused before 10:00 Berlin on D-1
+uv run --frozen python -m neghour.pipelines.inference_pipeline
+uv run --frozen python -m neghour.pipelines.inference_pipeline --date 2026-11-27 --dry-run
+
+# Measurements for the MS2 review
+uv run --frozen python -m scripts.compare_reload --first-day 2026-10-01 --last-day 2026-11-18
+uv run --frozen python -m scripts.schedule_report
 ```
 
-Both pipelines are idempotent: rows are upserted by UTC delivery hour, so a rerun
+`--dry-run` reads stored data and writes nothing. Both pipelines are idempotent: rows are upserted by UTC delivery hour, so a rerun
 adds nothing.
 
 ### Docker
@@ -218,26 +253,39 @@ Refresh them with `uv run --frozen python scripts/record_fixtures.py`.
 | Workflow | Trigger | Steps |
 |---|---|---|
 | `daily_pipeline.yml` | Cron 01:17, 05:17 and 12:17 UTC, or manual | Feature pipeline |
+| `inference.yml` | Cloud Scheduler 10:05 Berlin, or manual | Refresh day D, predict, store |
+| `weekly_training.yml` | Cloud Scheduler Sunday 03:00 Berlin, or manual | Retrain or evaluate |
 | `backfill.yml` | Manual | Backfill, then a report on stored data |
 | `ci.yml` | Push to main, PR, or manual | Lock check, ruff, pytest, Docker build |
 | `check_hopsworks.yml` | Manual | Hopsworks round-trip check |
 | `docker_run.yml` | Manual | Builds the image and runs the pipeline inside it |
-| `weekly_training.yml` | Manual | Not implemented until MS3 |
 
-GitHub cron is in UTC and has started this repo's jobs 4 to 9 hours late, so the
-daily run has two morning slots: 02:17 and 06:17 CET, or 03:17 and 07:17 CEST.
-Because rows are selected by timestamp, late runs stay correct, and the second
-run repairs anything the first one missed. MS3 needs a scheduler with better control
-of the start time, because a forecast must be out before the auction closes at 12:00.
+GitHub cron is in UTC and starts this repo's jobs hours late. Of 83 scheduled runs
+between 2026-10-02 and 2026-11-26, 22 % started before 10:00 Berlin and 5 % between
+10:00 and 12:00 (decision #47, `scripts/schedule_report.py`). Feature values are
+selected by timestamp, so a late run computes the same values. Since decision #45 a
+run after 12:00 Berlin no longer rewrites tomorrow's stored row; it only fills a
+day that was never stored, and refreshes labels.
 
 A third slot at 12:17 UTC (13:17 CET, 14:17 CEST) refreshes labels. The auction
 closes at 12:00, so the morning runs cannot see the next day's prices. This run
-stores those labels the same day, not the next morning, and it gives one more
-scheduled chance each day. It starts after the cut-off on purpose: features are
-still selected by `available_at`, so it adds no later data to them.
+stores those labels the same day, not the next morning.
 
-**Secret:** `HOPSWORKS_API_KEY` in GitHub Secrets. Locally it goes in `.env`, which
-is gitignored.
+**Inference timing:** the forecast must start after 10:00 and be out before 12:00
+Berlin, which cron cannot promise. `inference.yml` therefore has no cron and runs by
+`workflow_dispatch`. The pipeline refuses to start before the cut-off, stores
+`predicted_at` and `on_time`, and a late run never replaces an on-time prediction.
+Google Cloud Scheduler calls it at 10:05 Berlin, starts a label refresh at 13:30
+and retraining on Sundays (decision #60). Setup: `docs/scheduling.md`. MLflow tracks
+runs and models; it does not schedule.
+
+**Overlaps and failures:** feature writers share one concurrency group and never
+cancel a running job. A failed scheduled feature run, and any failed inference or
+training run, opens a GitHub issue.
+
+**Secrets:** `HOPSWORKS_API_KEY`, and `DAGSHUB_TOKEN` for MLflow on DagsHub (not set
+yet; without it runs are logged locally). Locally they go in `.env`, which is
+gitignored.
 
 **Variable:** `HOPSWORKS_HOST` in GitHub Variables, the Hopsworks instance host. It
 is not a secret and is not hardcoded, so the code runs against any instance.
@@ -249,7 +297,7 @@ created two `compute_stats` job definitions; neither has run.
 
 ## Monitoring plan (MS3)
 
-Not built yet, because it needs a model and stored predictions. The plan:
+Not built yet: predictions are stored from the first inference run on. The plan:
 
 - **Rolling scores:** PR-AUC and F1 over the last 30 delivery days, joining
   predictions to labels on the UTC hour, for the model and for both baselines
@@ -258,6 +306,13 @@ Not built yet, because it needs a model and stored predictions. The plan:
 - **Drift check:** each week, compare `residual_load_proxy`, `wind_100m` and
   `irradiance` with the training window using the population stability index,
   and warn above 0.2.
+- **Capacity drift:** the proxy uses wind and solar capacity fixed at end-2024
+  values, while installed capacity grows. A rising PSI of `residual_load_proxy`
+  is the expected sign; it is watched, not corrected (decision #57).
+- **Late forecasts:** the share of delivery days without an on-time prediction
+  (`on_time` in the predictions group).
+- **Calibration:** mean predicted probability against the observed rate. On the
+  test year the probabilities ran too high (decision #52).
 
 ## Repository
 
@@ -269,8 +324,10 @@ src/neghour/
 ├── sources/          SMARD, Open-Meteo
 ├── features/         build, calendar, validation
 ├── storage/          interface, Hopsworks, in-memory
-├── models/           baselines and LightGBM wrapper
-└── pipelines/        feature pipeline and backfill; training and inference are stubs
+├── models/           baselines, LightGBM wrapper, model registry
+├── tracking.py       MLflow logging
+└── pipelines/        feature, backfill, training, inference
 
+scripts/              store report, reload comparison, schedule report
 app/app.py            dashboard placeholder until MS3
 ```

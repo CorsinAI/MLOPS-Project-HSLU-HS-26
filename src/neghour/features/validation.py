@@ -54,6 +54,10 @@ FEATURE_COLUMNS: list[str] = [
     "available_at_calendar",
 ]
 
+# What the pipeline stores: the built row plus the UTC time its run fetched the
+# sources. `fetched_at` is not an availability time and is not a model input.
+STORED_FEATURE_COLUMNS: list[str] = [*FEATURE_COLUMNS, "fetched_at"]
+
 LABEL_COLUMNS: list[str] = [
     "delivery_utc",
     "price_eur_mwh",

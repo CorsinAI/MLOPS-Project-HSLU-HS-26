@@ -1,14 +1,31 @@
 name: Weekly training
 
+# Started by Google Cloud Scheduler on Sundays at 03:00 Berlin (decision #60),
+# or by hand. The GitHub cron below stays off so training runs once a week.
 on:
-  # DISABLED: uncomment schedule to re-enable
   # schedule:
-  #   - cron: "0 2 * * 0"
+  #   - cron: "0 2 * * 0"   # Sunday 02:00 UTC
   workflow_dispatch:
+    inputs:
+      mode:
+        description: retrain (rolling window, may register) or evaluate (test year, never registers)
+        default: retrain
+        required: true
+        type: choice
+        options: [retrain, evaluate]
+
+concurrency:
+  group: training
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   train:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -24,4 +41,15 @@ jobs:
           HOPSWORKS_HOST: ${{ vars.HOPSWORKS_HOST }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
-        run: uv run --frozen python -m neghour.pipelines.training_pipeline
+          MODE: ${{ inputs.mode || 'retrain' }}
+        run: uv run --frozen python -m neghour.pipelines.training_pipeline --mode "$MODE"
+
+      - name: Open an issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >
+          gh issue create --repo "$GITHUB_REPOSITORY"
+          --title "Training failed (run $GITHUB_RUN_ID)"
+          --body "Training run failed: $RUN_URL"

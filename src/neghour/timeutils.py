@@ -13,7 +13,7 @@ from datetime import UTC, date, datetime, timedelta
 import numpy as np
 import pandas as pd
 
-from neghour.config import BERLIN_TZ, CUTOFF_HOUR
+from neghour.config import BERLIN_TZ, CUTOFF_HOUR, GATE_CLOSURE_HOUR
 
 
 def berlin_today(now: datetime | None = None) -> date:
@@ -26,12 +26,19 @@ def _berlin_midnight(day: date) -> pd.Timestamp:
     return pd.Timestamp(day).tz_localize(BERLIN_TZ)
 
 
+def _day_before_at(delivery_day: date, hour: int) -> pd.Timestamp:
+    local = pd.Timestamp(delivery_day - timedelta(days=1)) + pd.Timedelta(hours=hour)
+    return local.tz_localize(BERLIN_TZ).tz_convert("UTC")
+
+
 def cutoff_utc(delivery_day: date) -> pd.Timestamp:
     """Return the data cut-off for a delivery day: 10:00 Berlin on D-1, in UTC."""
-    local = pd.Timestamp(delivery_day - timedelta(days=1)) + pd.Timedelta(
-        hours=CUTOFF_HOUR
-    )
-    return local.tz_localize(BERLIN_TZ).tz_convert("UTC")
+    return _day_before_at(delivery_day, CUTOFF_HOUR)
+
+
+def gate_closure_utc(delivery_day: date) -> pd.Timestamp:
+    """Return the auction gate closure for a delivery day: 12:00 Berlin on D-1."""
+    return _day_before_at(delivery_day, GATE_CLOSURE_HOUR)
 
 
 def delivery_hours(first_day: date, last_day: date | None = None) -> pd.DatetimeIndex:

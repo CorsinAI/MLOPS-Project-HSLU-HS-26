@@ -14,6 +14,18 @@ on:
     - cron: "17 12 * * *"
   workflow_dispatch:
 
+# One feature write at a time. A late run waits for the running one instead of
+# writing the same rows in parallel; the running job is never cancelled. GitHub
+# keeps one waiting run per group, so a newer waiting run replaces an older one,
+# which would have done the same work.
+concurrency:
+  group: feature-writes
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   feature-pipeline:
     runs-on: ubuntu-latest
@@ -34,3 +46,13 @@ jobs:
           HOPSWORKS_HOST: ${{ vars.HOPSWORKS_HOST }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: uv run --frozen python -m neghour.pipelines.feature_pipeline
+
+      - name: Open an issue on failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >
+          gh issue create --repo "$GITHUB_REPOSITORY"
+          --title "Daily pipeline failed (run $GITHUB_RUN_ID)"
+          --body "Scheduled run failed: $RUN_URL"

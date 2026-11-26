@@ -5,6 +5,10 @@ name: Docker run
 on:
   workflow_dispatch:
 
+concurrency:
+  group: feature-writes
+  cancel-in-progress: false
+
 jobs:
   run-image:
     runs-on: ubuntu-latest
