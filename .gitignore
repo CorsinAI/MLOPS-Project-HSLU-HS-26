@@ -45,3 +45,4 @@ Thumbs.db
 # Course reviews stay outside the repo
 editorial_summary*.pdf
 review_*.pdf
+CLAUDE.md
