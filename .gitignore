@@ -21,6 +21,8 @@ venv/
 # Data / artifacts
 data/
 mlruns/
+mlflow.db
+artifacts/
 *.pkl
 *.joblib
 

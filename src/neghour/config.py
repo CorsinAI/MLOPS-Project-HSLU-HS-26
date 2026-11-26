@@ -94,8 +94,9 @@ PREDICTION_GROUP_VERSION = 1
 DAGSHUB_REPO: str = os.getenv("DAGSHUB_REPO", "CorsinAI/MLOPS-Project-HSLU-HS-26")
 DAGSHUB_TOKEN: str = os.getenv("DAGSHUB_TOKEN", "")
 
-# Model registry
+# Model registry. With STORAGE_BACKEND=memory, models go to this local folder.
 MODEL_NAME = "neghour_lgbm"
+LOCAL_MODEL_DIR: str = os.getenv("LOCAL_MODEL_DIR", "artifacts/models")
 
 # Success criteria (proposal §1)
 TARGET_PR_AUC = 0.75
